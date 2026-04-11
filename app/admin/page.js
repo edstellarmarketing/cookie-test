@@ -114,7 +114,8 @@ export default function AdminDashboard() {
           }, 8000);
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
+        console.log("Realtime status:", status, err);
         setConnected(status === "SUBSCRIBED");
       });
 
@@ -122,6 +123,88 @@ export default function AdminDashboard() {
       supabase.removeChannel(channel);
     };
   }, [authenticated]);
+
+  // Polling fallback — fetch recent visits every 10 seconds
+  const lastPollIdRef = useRef(0);
+  useEffect(() => {
+    if (!authenticated) return;
+
+    const poll = async () => {
+      try {
+        const { data: visits } = await supabase
+          .from("page_visits")
+          .select("id, lead_id, page_url, page_title, visited_at")
+          .order("id", { ascending: false })
+          .limit(5);
+
+        if (!visits || visits.length === 0) return;
+
+        const maxId = Math.max(...visits.map((v) => v.id));
+        if (lastPollIdRef.current === 0) {
+          lastPollIdRef.current = maxId;
+          return;
+        }
+
+        const newVisits = visits.filter((v) => v.id > lastPollIdRef.current);
+        if (newVisits.length === 0) return;
+        lastPollIdRef.current = maxId;
+
+        for (const visit of newVisits.reverse()) {
+          const { data: lead } = await supabase
+            .from("leads")
+            .select("name, email, phone, course_interest")
+            .eq("id", visit.lead_id)
+            .single();
+
+          const notification = {
+            id: visit.id,
+            lead_id: visit.lead_id,
+            page_url: visit.page_url,
+            page_title: visit.page_title,
+            visited_at: visit.visited_at,
+            name: lead?.name || "Unknown",
+            email: lead?.email || "",
+            phone: lead?.phone || "",
+            course_interest: lead?.course_interest || "",
+            isNew: true,
+          };
+
+          setNotifications((prev) => {
+            if (prev.some((n) => n.id === notification.id)) return prev;
+            return [notification, ...prev].slice(0, 100);
+          });
+          setTotalToday((prev) => prev + 1);
+
+          setActiveVisitors((prev) => {
+            const next = new Map(prev);
+            next.set(visit.lead_id, notification);
+            return next;
+          });
+
+          setTimeout(() => {
+            setActiveVisitors((prev) => {
+              const next = new Map(prev);
+              const current = next.get(visit.lead_id);
+              if (current && current.id === visit.id) next.delete(visit.lead_id);
+              return next;
+            });
+          }, 120000);
+
+          playNotificationSound();
+
+          setTimeout(() => {
+            setNotifications((prev) =>
+              prev.map((n) => (n.id === notification.id ? { ...n, isNew: false } : n))
+            );
+          }, 8000);
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(poll, 10000);
+    poll();
+    return () => clearInterval(interval);
+  }, [authenticated, soundEnabled]);
 
   const getPageName = (url) => {
     try {
@@ -205,10 +288,10 @@ export default function AdminDashboard() {
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4 text-center">
           <div className="flex items-center justify-center gap-2">
-            <span className={`w-3 h-3 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
-            <p className="text-sm font-medium text-gray-700">{connected ? "Live" : "Disconnected"}</p>
+            <span className={`w-3 h-3 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-amber-500 animate-pulse"}`} />
+            <p className="text-sm font-medium text-gray-700">{connected ? "Live" : "Polling (10s)"}</p>
           </div>
-          <p className="text-xs text-gray-500 mt-1">Connection Status</p>
+          <p className="text-xs text-gray-500 mt-1">{connected ? "Real-time WebSocket" : "Auto-refresh active"}</p>
         </div>
       </div>
 
