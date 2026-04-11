@@ -38,6 +38,17 @@ export default function CourseForm({ slug, courseTitle }) {
         setCookieId(cookieId);
       }
 
+      // Track this page immediately after form submission
+      fetch("/api/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cookie_id: cookieId,
+          page_url: window.location.href,
+          page_title: document.title,
+        }),
+      }).catch(() => {});
+
       setStatus("success");
     } catch (err) {
       setErrorMsg(err.message);
