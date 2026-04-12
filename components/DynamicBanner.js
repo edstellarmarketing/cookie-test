@@ -12,28 +12,33 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
   const router = useRouter();
 
   useEffect(() => {
-    const cookieId = getCookieId();
+    // Small delay to let TrackingScript record the current page visit first
+    const timer = setTimeout(() => {
+      const cookieId = getCookieId();
 
-    // Fetch banner config and visit count in parallel
-    Promise.all([
-      fetch(`/api/banners?slug=${encodeURIComponent(slug)}`)
-        .then((r) => r.json())
-        .catch(() => ({ banner: null })),
-      cookieId
-        ? fetch(`/api/course-visits?cookie_id=${encodeURIComponent(cookieId)}&slug=${encodeURIComponent(slug)}`)
-            .then((r) => r.json())
-            .catch(() => ({ count: 0 }))
-        : Promise.resolve({ count: 0 }),
-    ]).then(([bannerData, visitData]) => {
-      const b = bannerData.banner;
-      const count = visitData.count || 0;
-      setBanner(b);
-      setVisitCount(count);
+      // Fetch banner config and visit count in parallel
+      Promise.all([
+        fetch(`/api/banners?slug=${encodeURIComponent(slug)}`)
+          .then((r) => r.json())
+          .catch(() => ({ banner: null })),
+        cookieId
+          ? fetch(`/api/course-visits?cookie_id=${encodeURIComponent(cookieId)}&slug=${encodeURIComponent(slug)}`)
+              .then((r) => r.json())
+              .catch(() => ({ count: 0 }))
+          : Promise.resolve({ count: 0 }),
+      ]).then(([bannerData, visitData]) => {
+        const b = bannerData.banner;
+        const count = visitData.count || 0;
+        setBanner(b);
+        setVisitCount(count);
 
-      if (b && b.is_active && count >= 3) {
-        setShow(true);
-      }
-    });
+        if (b && b.is_active && count >= 3) {
+          setShow(true);
+        }
+      });
+    }, 1500); // Wait 1.5s for track API to complete
+
+    return () => clearTimeout(timer);
   }, [slug]);
 
   const handleCTA = async () => {

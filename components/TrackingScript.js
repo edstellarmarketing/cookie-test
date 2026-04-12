@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect } from "react";
-import { getCookieId } from "@/lib/cookies";
+import { getCookieId, setCookieId } from "@/lib/cookies";
 import { usePathname } from "next/navigation";
 
 export default function TrackingScript() {
   const pathname = usePathname();
 
   useEffect(() => {
-    const cookieId = getCookieId();
-    if (!cookieId) return;
+    // Auto-create visitor_id cookie if not present (enables tracking before form submission)
+    let cookieId = getCookieId();
+    if (!cookieId) {
+      cookieId = crypto.randomUUID();
+      setCookieId(cookieId);
+    }
 
     // Don't track admin pages
     if (pathname.startsWith("/admin")) return;
