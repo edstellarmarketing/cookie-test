@@ -25,7 +25,20 @@ export default function CheckoutPage() {
 
     fetch(`/api/cart?cookie_id=${encodeURIComponent(cookieId)}`)
       .then((res) => res.json())
-      .then((data) => setCart(data.cart || []))
+      .then((data) => {
+        setCart(data.cart || []);
+        // Mark that visitor reached checkout (for cart abandonment tracking)
+        if (data.cart?.length > 0) {
+          sessionStorage.setItem("checkout_visited", Date.now().toString());
+          sessionStorage.setItem("checkout_courses", JSON.stringify(
+            data.cart.map((c) => ({
+              slug: c.course_slug,
+              title: c.metadata?.course_title || c.course_slug.replace(/-/g, " "),
+              price: c.metadata?.price || 0,
+            }))
+          ));
+        }
+      })
       .catch(() => setCart([]))
       .finally(() => setLoading(false));
   }, []);
@@ -63,6 +76,9 @@ export default function CheckoutPage() {
 
     const allSuccess = results.every((r) => r.success);
     if (allSuccess) {
+      // Clear checkout abandonment flags on successful payment
+      sessionStorage.removeItem("checkout_visited");
+      sessionStorage.removeItem("checkout_courses");
       setResult({
         success: true,
         message: "Payment successful! You are now enrolled.",

@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import TrackingScript from "@/components/TrackingScript";
+import CartAbandonmentBanner from "@/components/CartAbandonmentBanner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({ children }) {
         </nav>
         <main className="flex-1">{children}</main>
         <TrackingScript />
+        <CartAbandonmentBanner />
       </body>
     </html>
   );
