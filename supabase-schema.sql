@@ -30,6 +30,10 @@ CREATE INDEX IF NOT EXISTS idx_page_visits_lead_id ON page_visits(lead_id);
 CREATE INDEX IF NOT EXISTS idx_page_visits_cookie_id ON page_visits(cookie_id);
 CREATE INDEX IF NOT EXISTS idx_page_visits_visited_at ON page_visits(visited_at DESC);
 
+-- Domain column for multi-site tracking
+ALTER TABLE page_visits ADD COLUMN IF NOT EXISTS domain TEXT;
+CREATE INDEX IF NOT EXISTS idx_page_visits_domain ON page_visits(domain);
+
 -- ============================================
 -- ENABLE REALTIME on page_visits
 -- ============================================
@@ -144,6 +148,7 @@ SELECT
   pv.id AS visit_id,
   pv.page_url,
   pv.page_title,
+  pv.domain,
   pv.visited_at,
   l.id AS lead_id,
   l.name,

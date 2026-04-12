@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase-client";
 import Link from "next/link";
 import VisitHistory from "@/components/VisitHistory";
 import MilestoneTimeline from "@/components/MilestoneTimeline";
@@ -12,6 +13,8 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState(null);
+  const [domains, setDomains] = useState([]);
+  const [selectedDomain, setSelectedDomain] = useState("all");
   const router = useRouter();
 
   useEffect(() => {
@@ -23,12 +26,29 @@ export default function LeadsPage() {
     }
   }, [router]);
 
+  // Fetch distinct domains for filter
   useEffect(() => {
     if (!authenticated) return;
-    fetch("/api/leads")
+    supabase
+      .from("page_visits")
+      .select("domain")
+      .not("domain", "is", null)
+      .then(({ data }) => {
+        const unique = [...new Set((data || []).map((d) => d.domain))].filter(Boolean).sort();
+        setDomains(unique);
+      });
+  }, [authenticated]);
+
+  // Fetch leads (re-fetches when domain filter changes)
+  useEffect(() => {
+    if (!authenticated) return;
+    setLoading(true);
+    const url = selectedDomain === "all"
+      ? "/api/leads"
+      : `/api/leads?domain=${encodeURIComponent(selectedDomain)}`;
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
-        // Sort by lead_score descending (hottest leads first)
         const sorted = (data.leads || []).sort(
           (a, b) => (b.lead_score || 0) - (a.lead_score || 0)
         );
@@ -36,7 +56,7 @@ export default function LeadsPage() {
       })
       .catch(() => setLeads([]))
       .finally(() => setLoading(false));
-  }, [authenticated]);
+  }, [authenticated, selectedDomain]);
 
   const formatDate = (timestamp) => {
     return new Date(timestamp).toLocaleDateString([], {
@@ -64,12 +84,30 @@ export default function LeadsPage() {
           <h1 className="text-2xl font-bold">All Leads</h1>
           <p className="text-gray-500 text-sm">{leads.length} total lead(s)</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          {domains.length > 0 && (
+            <select
+              value={selectedDomain}
+              onChange={(e) => setSelectedDomain(e.target.value)}
+              className="text-sm border border-gray-300 px-3 py-1.5 rounded-lg bg-white"
+            >
+              <option value="all">All Domains</option>
+              {domains.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          )}
           <Link
             href="/admin"
             className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
           >
             Live Dashboard
+          </Link>
+          <Link
+            href="/admin/settings"
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+          >
+            Settings
           </Link>
           <button
             onClick={() => {

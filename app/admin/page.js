@@ -13,6 +13,8 @@ export default function AdminDashboard() {
   const [connected, setConnected] = useState(false);
   const [totalToday, setTotalToday] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [domains, setDomains] = useState([]);
+  const [selectedDomain, setSelectedDomain] = useState("all");
   const audioContextRef = useRef(null);
   const router = useRouter();
 
@@ -48,6 +50,19 @@ export default function AdminDashboard() {
       router.push("/admin/login");
     }
   }, [router]);
+
+  // Fetch distinct domains for the filter dropdown
+  useEffect(() => {
+    if (!authenticated) return;
+    supabase
+      .from("page_visits")
+      .select("domain")
+      .not("domain", "is", null)
+      .then(({ data }) => {
+        const unique = [...new Set((data || []).map((d) => d.domain))].filter(Boolean).sort();
+        setDomains(unique);
+      });
+  }, [authenticated]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -241,7 +256,13 @@ export default function AdminDashboard() {
     );
   }
 
-  const activeList = Array.from(activeVisitors.values());
+  const matchesDomain = (url) => {
+    if (selectedDomain === "all") return true;
+    try { return new URL(url).hostname === selectedDomain; } catch { return false; }
+  };
+
+  const activeList = Array.from(activeVisitors.values()).filter((v) => matchesDomain(v.page_url));
+  const filteredNotifications = notifications.filter((n) => matchesDomain(n.page_url));
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
@@ -251,7 +272,19 @@ export default function AdminDashboard() {
           <h1 className="text-2xl font-bold">Live Dashboard</h1>
           <p className="text-gray-500 text-sm">Real-time visitor monitoring</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          {domains.length > 0 && (
+            <select
+              value={selectedDomain}
+              onChange={(e) => setSelectedDomain(e.target.value)}
+              className="text-sm border border-gray-300 px-3 py-1.5 rounded-lg bg-white"
+            >
+              <option value="all">All Domains</option>
+              {domains.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={soundEnabled ? () => setSoundEnabled(false) : enableSound}
             className={`text-sm px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
@@ -266,7 +299,13 @@ export default function AdminDashboard() {
             href="/admin/leads"
             className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
           >
-            View All Leads
+            All Leads
+          </Link>
+          <Link
+            href="/admin/settings"
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+          >
+            Settings
           </Link>
           <button
             onClick={() => {
@@ -375,15 +414,15 @@ export default function AdminDashboard() {
       {/* Recent Activity Feed */}
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
-        {notifications.length === 0 ? (
+        {filteredNotifications.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">
-            Waiting for visitor activity...
+            {selectedDomain !== "all" ? `No activity from ${selectedDomain}` : "Waiting for visitor activity..."}
             <br />
             <span className="text-xs">Page views will appear here in real-time</span>
           </div>
         ) : (
           <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-            {notifications.map((n) => (
+            {filteredNotifications.map((n) => (
               <div
                 key={n.id}
                 className={`flex items-center gap-4 py-3 px-2 transition-all duration-700 ${

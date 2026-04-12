@@ -2,13 +2,31 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { MILESTONES, getTemperature } from "@/lib/milestones";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+function jsonResponse(body, opts = {}) {
+  return NextResponse.json(body, {
+    ...opts,
+    headers: { ...corsHeaders, ...opts.headers },
+  });
+}
+
+// CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
     const { cookie_id, name, email, phone, course_interest } = body;
 
     if (!cookie_id || !name || !email) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "cookie_id, name, and email are required" },
         { status: 400 }
       );
@@ -24,7 +42,7 @@ export async function POST(request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return jsonResponse({ error: error.message }, { status: 500 });
     }
 
     // Insert form_submitted milestone (ignore if already exists via unique index)
@@ -56,25 +74,44 @@ export async function POST(request) {
         .eq("id", data.id);
     }
 
-    return NextResponse.json({ success: true, lead: data }, { status: 201 });
+    return jsonResponse({ success: true, lead: data }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return jsonResponse({ error: err.message }, { status: 500 });
   }
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const { data, error } = await supabaseAdmin
+    const { searchParams } = new URL(request.url);
+    const domain = searchParams.get("domain");
+
+    let query = supabaseAdmin
       .from("leads")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    // Filter by domain: find lead_ids that have visits on this domain
+    if (domain) {
+      const { data: visitLeadIds } = await supabaseAdmin
+        .from("page_visits")
+        .select("lead_id")
+        .eq("domain", domain);
+
+      const uniqueIds = [...new Set((visitLeadIds || []).map((v) => v.lead_id))];
+      if (uniqueIds.length === 0) {
+        return jsonResponse({ leads: [] });
+      }
+      query = query.in("id", uniqueIds);
     }
 
-    return NextResponse.json({ leads: data });
+    const { data, error } = await query;
+
+    if (error) {
+      return jsonResponse({ error: error.message }, { status: 500 });
+    }
+
+    return jsonResponse({ leads: data });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return jsonResponse({ error: err.message }, { status: 500 });
   }
 }
