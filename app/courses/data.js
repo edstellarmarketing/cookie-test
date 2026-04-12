@@ -7,6 +7,8 @@ export const courses = [
     duration: "8 weeks",
     level: "Advanced",
     color: "blue",
+    price: 799,
+    originalPrice: 999,
   },
   {
     slug: "cloud-devops",
@@ -16,6 +18,8 @@ export const courses = [
     duration: "10 weeks",
     level: "Intermediate",
     color: "green",
+    price: 899,
+    originalPrice: 1199,
   },
   {
     slug: "data-science",
@@ -25,6 +29,8 @@ export const courses = [
     duration: "12 weeks",
     level: "Intermediate",
     color: "purple",
+    price: 999,
+    originalPrice: 1299,
   },
   {
     slug: "full-stack-web",
@@ -34,5 +40,7 @@ export const courses = [
     duration: "14 weeks",
     level: "Beginner to Intermediate",
     color: "orange",
+    price: 849,
+    originalPrice: 1099,
   },
 ];

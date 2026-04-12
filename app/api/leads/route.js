@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { MILESTONES, getTemperature } from "@/lib/milestones";
 
 export async function POST(request) {
   try {
@@ -24,6 +25,35 @@ export async function POST(request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Insert form_submitted milestone (ignore if already exists via unique index)
+    const formMilestone = MILESTONES.form_submitted;
+    const { error: msError } = await supabaseAdmin
+      .from("lead_milestones")
+      .insert({
+        lead_id: data.id,
+        milestone_type: "form_submitted",
+        milestone_label: formMilestone.label,
+        points: formMilestone.points,
+        metadata: { course_interest },
+      });
+
+    if (msError && msError.code !== "23505") {
+      console.error("form_submitted milestone insert error:", msError.message);
+    }
+
+    // Update lead score with form_submitted points if milestone was new
+    if (!msError) {
+      const score = (data.lead_score || 0) + formMilestone.points;
+      await supabaseAdmin
+        .from("leads")
+        .update({
+          lead_score: score,
+          lead_temperature: getTemperature(score),
+          score_updated_at: new Date().toISOString(),
+        })
+        .eq("id", data.id);
     }
 
     return NextResponse.json({ success: true, lead: data }, { status: 201 });

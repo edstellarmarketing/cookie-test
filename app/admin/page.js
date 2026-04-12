@@ -62,7 +62,7 @@ export default function AdminDashboard() {
 
           const { data: lead } = await supabase
             .from("leads")
-            .select("name, email, phone, course_interest")
+            .select("name, email, phone, course_interest, lead_score, lead_temperature")
             .eq("id", visit.lead_id)
             .single();
 
@@ -76,6 +76,8 @@ export default function AdminDashboard() {
             email: lead?.email || "",
             phone: lead?.phone || "",
             course_interest: lead?.course_interest || "",
+            lead_score: lead?.lead_score || 0,
+            lead_temperature: lead?.lead_temperature || "Cold",
             isNew: true,
           };
 
@@ -152,7 +154,7 @@ export default function AdminDashboard() {
         for (const visit of newVisits.reverse()) {
           const { data: lead } = await supabase
             .from("leads")
-            .select("name, email, phone, course_interest")
+            .select("name, email, phone, course_interest, lead_score, lead_temperature")
             .eq("id", visit.lead_id)
             .single();
 
@@ -166,6 +168,8 @@ export default function AdminDashboard() {
             email: lead?.email || "",
             phone: lead?.phone || "",
             course_interest: lead?.course_interest || "",
+            lead_score: lead?.lead_score || 0,
+            lead_temperature: lead?.lead_temperature || "Cold",
             isNew: true,
           };
 
@@ -314,8 +318,24 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
                     <span className="font-semibold text-base">{v.name}</span>
+                    {(() => {
+                      const temp = (v.lead_temperature || "Cold").toLowerCase();
+                      const styles = {
+                        hot: "bg-red-600 text-white",
+                        warm: "bg-amber-500 text-white",
+                        cold: "bg-blue-500 text-white",
+                      };
+                      return (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${styles[temp] || styles.cold}`}>
+                          {(v.lead_temperature || "Cold").toUpperCase()}
+                        </span>
+                      );
+                    })()}
                   </div>
-                  <span className="text-xs text-gray-400">{timeAgo(v.visited_at)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-500">{v.lead_score || 0}pts</span>
+                    <span className="text-xs text-gray-400">{timeAgo(v.visited_at)}</span>
+                  </div>
                 </div>
 
                 <div className="bg-white rounded-lg p-3 mb-3 border border-green-200">

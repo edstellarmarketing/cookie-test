@@ -62,6 +62,81 @@ CREATE POLICY "Allow anon select on page_visits"
   USING (true);
 
 -- ============================================
+-- TABLE: lead_milestones
+-- ============================================
+CREATE TABLE IF NOT EXISTS lead_milestones (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE NOT NULL,
+  milestone_type TEXT NOT NULL,
+  milestone_label TEXT NOT NULL,
+  points INTEGER NOT NULL DEFAULT 0,
+  metadata JSONB DEFAULT '{}',
+  achieved_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_milestones_lead_id ON lead_milestones(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_milestones_type ON lead_milestones(milestone_type);
+
+-- Most milestones are one-per-lead; repeat_course_visit and re_engaged_after_gap can fire multiple times
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_milestones_unique
+  ON lead_milestones(lead_id, milestone_type)
+  WHERE milestone_type NOT IN ('repeat_course_visit', 're_engaged_after_gap');
+
+ALTER TABLE lead_milestones ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon insert on lead_milestones"
+  ON lead_milestones FOR INSERT
+  TO anon
+  WITH CHECK (true);
+
+CREATE POLICY "Allow anon select on lead_milestones"
+  ON lead_milestones FOR SELECT
+  TO anon
+  USING (true);
+
+-- Enable realtime on lead_milestones
+ALTER PUBLICATION supabase_realtime ADD TABLE lead_milestones;
+
+-- ============================================
+-- TABLE: cart_events
+-- ============================================
+CREATE TABLE IF NOT EXISTS cart_events (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE NOT NULL,
+  cookie_id TEXT NOT NULL,
+  course_slug TEXT NOT NULL,
+  event_type TEXT NOT NULL,  -- 'add_to_cart', 'checkout_started', 'payment_completed', 'cart_abandoned'
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cart_events_lead_id ON cart_events(lead_id);
+CREATE INDEX IF NOT EXISTS idx_cart_events_cookie_id ON cart_events(cookie_id);
+CREATE INDEX IF NOT EXISTS idx_cart_events_type ON cart_events(event_type);
+
+ALTER TABLE cart_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon insert on cart_events"
+  ON cart_events FOR INSERT
+  TO anon
+  WITH CHECK (true);
+
+CREATE POLICY "Allow anon select on cart_events"
+  ON cart_events FOR SELECT
+  TO anon
+  USING (true);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE cart_events;
+
+-- ============================================
+-- ADD SCORE COLUMNS TO leads
+-- ============================================
+ALTER TABLE leads
+  ADD COLUMN IF NOT EXISTS lead_score INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS lead_temperature TEXT DEFAULT 'Cold',
+  ADD COLUMN IF NOT EXISTS score_updated_at TIMESTAMPTZ DEFAULT now();
+
+-- ============================================
 -- VIEW: enriched_visits
 -- ============================================
 CREATE OR REPLACE VIEW enriched_visits AS

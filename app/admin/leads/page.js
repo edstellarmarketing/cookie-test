@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import VisitHistory from "@/components/VisitHistory";
+import MilestoneTimeline from "@/components/MilestoneTimeline";
 import SalesIntel from "@/components/SalesIntel";
 
 export default function LeadsPage() {
@@ -26,7 +27,13 @@ export default function LeadsPage() {
     if (!authenticated) return;
     fetch("/api/leads")
       .then((res) => res.json())
-      .then((data) => setLeads(data.leads || []))
+      .then((data) => {
+        // Sort by lead_score descending (hottest leads first)
+        const sorted = (data.leads || []).sort(
+          (a, b) => (b.lead_score || 0) - (a.lead_score || 0)
+        );
+        setLeads(sorted);
+      })
       .catch(() => setLeads([]))
       .finally(() => setLoading(false));
   }, [authenticated]);
@@ -95,6 +102,8 @@ export default function LeadsPage() {
                     <th className="pb-3 pr-4 font-medium">Email</th>
                     <th className="pb-3 pr-4 font-medium">Phone</th>
                     <th className="pb-3 pr-4 font-medium">Interested In</th>
+                    <th className="pb-3 pr-4 font-medium">Score</th>
+                    <th className="pb-3 pr-4 font-medium">Temperature</th>
                     <th className="pb-3 font-medium">Date</th>
                   </tr>
                 </thead>
@@ -130,6 +139,22 @@ export default function LeadsPage() {
                           {lead.course_interest?.replace(/-/g, " ") || "-"}
                         </span>
                       </td>
+                      <td className="py-3 pr-4 font-semibold text-gray-700">{lead.lead_score || 0}</td>
+                      <td className="py-3 pr-4">
+                        {(() => {
+                          const temp = (lead.lead_temperature || "Cold").toLowerCase();
+                          const styles = {
+                            hot: "bg-red-600 text-white",
+                            warm: "bg-amber-500 text-white",
+                            cold: "bg-blue-500 text-white",
+                          };
+                          return (
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${styles[temp] || styles.cold}`}>
+                              {(lead.lead_temperature || "Cold").toUpperCase()}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="py-3 text-gray-500 whitespace-nowrap">{formatDate(lead.created_at)}</td>
                     </tr>
                   ))}
@@ -145,6 +170,13 @@ export default function LeadsPage() {
             <h2 className="text-lg font-semibold mb-4">Visit History</h2>
             <VisitHistory lead={selectedLead} />
           </div>
+
+          {selectedLead && (
+            <MilestoneTimeline
+              key={`ms-${selectedLead.id}`}
+              leadId={selectedLead.id}
+            />
+          )}
 
           {selectedLead && (
             <SalesIntel

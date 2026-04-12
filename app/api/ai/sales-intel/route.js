@@ -20,12 +20,19 @@ export async function POST(request) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    // Fetch visit history
-    const { data: visits } = await supabaseAdmin
-      .from("page_visits")
-      .select("page_url, page_title, visited_at")
-      .eq("lead_id", lead_id)
-      .order("visited_at", { ascending: true });
+    // Fetch visit history and milestones in parallel
+    const [{ data: visits }, { data: milestones }] = await Promise.all([
+      supabaseAdmin
+        .from("page_visits")
+        .select("page_url, page_title, visited_at")
+        .eq("lead_id", lead_id)
+        .order("visited_at", { ascending: true }),
+      supabaseAdmin
+        .from("lead_milestones")
+        .select("milestone_label, points, achieved_at")
+        .eq("lead_id", lead_id)
+        .order("achieved_at", { ascending: false }),
+    ]);
 
     // Build signals for AI
     const totalVisits = visits?.length || 0;
@@ -101,6 +108,10 @@ LEAD DETAILS:
 - Re-engaged after gap: ${reEngaged ? "Yes (came back after 2+ days away)" : "No"}
 - Last active: ${minutesSinceLastVisit < 5 ? "RIGHT NOW on the site" : minutesSinceLastVisit + " minutes ago"}
 ${current_page ? `- Currently viewing: ${current_page}` : ""}
+
+LEAD SCORE: ${lead.lead_score || 0} points (${lead.lead_temperature || "Cold"})
+MILESTONES ACHIEVED:
+${(milestones || []).length > 0 ? (milestones || []).map((m) => `- ${m.milestone_label} (+${m.points}pts)`).join("\n") : "None yet"}
 
 BROWSING JOURNEY:
 ${journey || "No visits recorded yet (just signed up)"}

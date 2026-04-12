@@ -1,6 +1,7 @@
 import { courses } from "../data";
 import { notFound } from "next/navigation";
 import CourseForm from "@/components/CourseForm";
+import AddToCartButton from "@/components/AddToCartButton";
 import Link from "next/link";
 
 export function generateStaticParams() {
@@ -32,6 +33,27 @@ export default async function CoursePage({ params }) {
           <span className="bg-gray-100 px-3 py-1 rounded-full">{course.duration}</span>
         </div>
         <p className="text-gray-600 text-lg leading-relaxed">{course.description}</p>
+      </div>
+
+      {/* Pricing + Add to Cart */}
+      <div className="bg-white border-2 border-green-200 rounded-xl p-8 mb-8">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p className="text-sm text-gray-500 mb-1">Course Fee</p>
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl font-bold text-gray-900">${course.price}</span>
+              <span className="text-lg text-gray-400 line-through">${course.originalPrice}</span>
+              <span className="text-sm font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                Save ${course.originalPrice - course.price}
+              </span>
+            </div>
+          </div>
+          <AddToCartButton
+            slug={course.slug}
+            courseTitle={course.title}
+            price={course.price}
+          />
+        </div>
       </div>
 
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-8">

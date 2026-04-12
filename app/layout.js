@@ -29,6 +29,7 @@ export default function RootLayout({ children }) {
             <a href="/" className="text-xl font-bold">TrainingHub</a>
             <div className="flex gap-6 text-sm">
               <a href="/" className="hover:text-blue-400">Courses</a>
+              <a href="/cart" className="hover:text-blue-400">Cart</a>
               <a href="/admin/login" className="hover:text-blue-400">Admin</a>
             </div>
           </div>
