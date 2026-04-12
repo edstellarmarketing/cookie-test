@@ -145,13 +145,17 @@ ALTER TABLE leads
 -- ============================================
 CREATE TABLE IF NOT EXISTS course_banners (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  course_slug TEXT UNIQUE NOT NULL,
+  course_slug TEXT NOT NULL,
+  scenario TEXT NOT NULL,
   is_active BOOLEAN DEFAULT false,
-  offer_text TEXT DEFAULT 'Limited Time Offer!',
+  offer_text TEXT NOT NULL DEFAULT 'Limited Time Offer!',
   discount_percent INTEGER DEFAULT 10,
+  timer_hours NUMERIC(4,1) DEFAULT 4,
   cta_text TEXT DEFAULT 'Enroll Now',
+  priority INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(course_slug, scenario)
 );
 
 ALTER TABLE course_banners ENABLE ROW LEVEL SECURITY;

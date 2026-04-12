@@ -4,21 +4,42 @@ import { useEffect, useState, useRef } from "react";
 import { getCookieId } from "@/lib/cookies";
 import { useRouter } from "next/navigation";
 
-const OFFER_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function getOfferState(slug) {
+// Per-scenario personalized messages
+const SCENARIO_MESSAGES = {
+  frequent_visitor: (title) =>
+    `We noticed you've been exploring **${title}** multiple times. This exclusive deal is crafted just for you!`,
+  cart_abandoned: (title) =>
+    `You left **${title}** in your cart! Complete your enrollment now with an extra discount before this offer disappears.`,
+  re_engagement: (title) =>
+    `Welcome back! We're glad to see you again. Here's a special returning visitor offer for **${title}**.`,
+  first_visit: (title) =>
+    `Looks like you just discovered **${title}**! Here's an early-bird discount to get you started.`,
+  course_explorer: (title) =>
+    `You've been exploring several courses — we think **${title}** is the perfect fit. Here's a special deal.`,
+  checkout_dropout: (title) =>
+    `You were so close to enrolling in **${title}**! Complete your payment now with this last-chance discount.`,
+};
+
+const SCENARIO_BADGES = {
+  frequent_visitor: { text: "Exclusive Offer — Just For You", color: "bg-red-600" },
+  cart_abandoned: { text: "Complete Your Purchase", color: "bg-orange-600" },
+  re_engagement: { text: "Welcome Back Offer", color: "bg-purple-600" },
+  first_visit: { text: "Early Bird Discount", color: "bg-blue-600" },
+  course_explorer: { text: "Curated For You", color: "bg-indigo-600" },
+  checkout_dropout: { text: "Last Chance — Don't Miss Out", color: "bg-rose-600" },
+};
+
+function getOfferState(slug, scenario) {
   try {
-    const raw = localStorage.getItem(`offer_${slug}`);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+    const raw = localStorage.getItem(`offer_${slug}_${scenario}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
 }
 
-function setOfferState(slug, state) {
-  localStorage.setItem(`offer_${slug}`, JSON.stringify(state));
+function setOfferState(slug, scenario, state) {
+  localStorage.setItem(`offer_${slug}_${scenario}`, JSON.stringify(state));
 }
 
 function formatTime(ms) {
@@ -29,9 +50,29 @@ function formatTime(ms) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+// Check if a scenario matches the visitor's signals
+function evaluateScenario(scenario, signals) {
+  switch (scenario) {
+    case "frequent_visitor":
+      return signals.visit_count >= 3;
+    case "cart_abandoned":
+      return signals.cart_abandoned === true;
+    case "re_engagement":
+      return signals.gap_days >= 2 && signals.visit_count >= 2;
+    case "first_visit":
+      return signals.visit_count === 1;
+    case "course_explorer":
+      return signals.distinct_courses >= 3;
+    case "checkout_dropout":
+      return signals.checkout_dropout === true;
+    default:
+      return false;
+  }
+}
+
 export default function DynamicBanner({ slug, courseTitle, price, originalPrice }) {
-  const [banner, setBanner] = useState(null);
-  const [visitCount, setVisitCount] = useState(0);
+  const [activeBanner, setActiveBanner] = useState(null);
+  const [signals, setSignals] = useState(null);
   const [show, setShow] = useState(false);
   const [adding, setAdding] = useState(false);
   const [timeLeft, setTimeLeft] = useState("");
@@ -39,24 +80,20 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
   const intervalRef = useRef(null);
   const router = useRouter();
 
-  // Start or resume the countdown timer
-  const startTimer = (expiresAt) => {
+  const startTimer = (expiresAt, scSlug, scScenario) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-
     const tick = () => {
       const remaining = expiresAt - Date.now();
       if (remaining <= 0) {
         setTimeLeft("00:00:00");
         setExpired(true);
         setShow(false);
-        // Mark as expired with cooldown timestamp
-        setOfferState(slug, { expired_at: Date.now() });
+        setOfferState(scSlug, scScenario, { expired_at: Date.now() });
         if (intervalRef.current) clearInterval(intervalRef.current);
         return;
       }
       setTimeLeft(formatTime(remaining));
     };
-
     tick();
     intervalRef.current = setInterval(tick, 1000);
   };
@@ -64,56 +101,53 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
   useEffect(() => {
     const timer = setTimeout(() => {
       const cookieId = getCookieId();
-
-      // Check cooldown — if offer expired within last 24 hours, don't show
-      const offerState = getOfferState(slug);
-      if (offerState?.expired_at) {
-        const elapsed = Date.now() - offerState.expired_at;
-        if (elapsed < COOLDOWN_MS) {
-          return; // Still in 24h cooldown
-        }
-        // Cooldown passed — clear state so offer can trigger again
-        localStorage.removeItem(`offer_${slug}`);
-      }
+      if (!cookieId) return;
 
       Promise.all([
         fetch(`/api/banners?slug=${encodeURIComponent(slug)}`)
-          .then((r) => r.json())
-          .catch(() => ({ banner: null })),
-        cookieId
-          ? fetch(`/api/course-visits?cookie_id=${encodeURIComponent(cookieId)}&slug=${encodeURIComponent(slug)}`)
-              .then((r) => r.json())
-              .catch(() => ({ count: 0 }))
-          : Promise.resolve({ count: 0 }),
-      ]).then(([bannerData, visitData]) => {
-        const b = bannerData.banner;
-        const count = visitData.count || 0;
-        setBanner(b);
-        setVisitCount(count);
+          .then((r) => r.json()).catch(() => ({ banners: [] })),
+        fetch(`/api/course-visits?cookie_id=${encodeURIComponent(cookieId)}&slug=${encodeURIComponent(slug)}&type=all_signals`)
+          .then((r) => r.json()).catch(() => ({})),
+      ]).then(([bannerData, signalData]) => {
+        const banners = (bannerData.banners || []).filter((b) => b.is_active);
+        setSignals(signalData);
 
-        if (b && b.is_active && count >= 3) {
-          // Check if there's an existing active timer
-          const existing = getOfferState(slug);
+        if (signalData.has_payment) return; // Already paid — no banners
+
+        // Sort by priority descending, find the first matching scenario
+        banners.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+        for (const banner of banners) {
+          if (!evaluateScenario(banner.scenario, signalData)) continue;
+
+          // Check cooldown
+          const state = getOfferState(slug, banner.scenario);
+          if (state?.expired_at && Date.now() - state.expired_at < COOLDOWN_MS) continue;
+          if (state?.expired_at && Date.now() - state.expired_at >= COOLDOWN_MS) {
+            localStorage.removeItem(`offer_${slug}_${banner.scenario}`);
+          }
+
+          // This banner matches — activate it
+          setActiveBanner(banner);
+
+          const existing = getOfferState(slug, banner.scenario);
+          const timerMs = (banner.timer_hours || 4) * 3600000;
           let expiresAt;
 
           if (existing?.expires_at && !existing.expired_at) {
-            // Resume existing timer
             expiresAt = existing.expires_at;
             if (expiresAt <= Date.now()) {
-              // Already expired while visitor was away
-              setOfferState(slug, { expired_at: Date.now() });
-              return;
+              setOfferState(slug, banner.scenario, { expired_at: Date.now() });
+              continue; // Expired while away, try next
             }
-          } else if (!existing?.expired_at) {
-            // Start new 4-hour timer
-            expiresAt = Date.now() + OFFER_DURATION_MS;
-            setOfferState(slug, { expires_at: expiresAt });
           } else {
-            return; // In cooldown
+            expiresAt = Date.now() + timerMs;
+            setOfferState(slug, banner.scenario, { expires_at: expiresAt });
           }
 
           setShow(true);
-          startTimer(expiresAt);
+          startTimer(expiresAt, slug, banner.scenario);
+          break; // Only show one banner
         }
       });
     }, 1500);
@@ -126,13 +160,8 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
 
   const handleCTA = async () => {
     const cookieId = getCookieId();
-    if (!cookieId) {
-      router.push(`/courses/${slug}`);
-      return;
-    }
-
+    if (!cookieId) return;
     setAdding(true);
-    const discounted = Math.round(price * (1 - (banner.discount_percent + 10) / 100));
     try {
       await fetch("/api/cart", {
         method: "POST",
@@ -141,7 +170,7 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
           cookie_id: cookieId,
           course_slug: slug,
           course_title: courseTitle,
-          price: discounted,
+          price: discountedPrice,
         }),
       });
       router.push("/cart");
@@ -150,12 +179,24 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
     }
   };
 
-  if (!show || !banner || expired) return null;
+  if (!show || !activeBanner || expired) return null;
 
-  const baseDiscount = banner.discount_percent;
-  const totalDiscount = baseDiscount + 10; // extra 10% for urgency
-  const discountedPrice = Math.round(price * (1 - totalDiscount / 100));
+  const discountedPrice = Math.round(price * (1 - activeBanner.discount_percent / 100));
   const savings = price - discountedPrice;
+  const badge = SCENARIO_BADGES[activeBanner.scenario] || SCENARIO_BADGES.frequent_visitor;
+  const message = (SCENARIO_MESSAGES[activeBanner.scenario] || SCENARIO_MESSAGES.frequent_visitor)(courseTitle);
+
+  // Parse markdown bold (**text**) in message
+  const renderMessage = (msg) => {
+    const parts = msg.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={i} className="text-gray-900">{part.slice(2, -2)}</strong>
+      ) : (
+        <span key={i}>{part}</span>
+      )
+    );
+  };
 
   return (
     <div className="sticky top-6">
@@ -163,16 +204,19 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
         <div className="bg-white rounded-xl p-5">
           {/* Badge */}
           <div className="flex justify-center mb-3">
-            <span className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider animate-pulse">
-              Exclusive Offer — Just For You
+            <span className={`${badge.color} text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider animate-pulse`}>
+              {badge.text}
             </span>
           </div>
 
-          {/* Personalized Text */}
-          <p className="text-center text-sm text-gray-600 mb-2 leading-relaxed">
-            We noticed you've been exploring{" "}
-            <strong className="text-gray-900">{courseTitle}</strong>.
-            This exclusive deal is crafted just for you based on your interest.
+          {/* Offer Headline */}
+          <h3 className="text-center text-lg font-bold text-gray-900 mb-2">
+            {activeBanner.offer_text}
+          </h3>
+
+          {/* Personalized Message */}
+          <p className="text-center text-sm text-gray-600 mb-4 leading-relaxed">
+            {renderMessage(message)}
           </p>
 
           {/* Countdown Timer */}
@@ -197,40 +241,17 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
             </div>
           </div>
 
-          {/* Extra Discount Highlight */}
-          <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-4 text-center">
-            <p className="text-xs text-amber-800">
-              Get an <strong>additional 10% off</strong> on top of the {baseDiscount}% discount
-              if you purchase within the next 4 hours!
-            </p>
-          </div>
-
           {/* Price Display */}
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 mb-4 text-center">
             <p className="text-sm text-gray-500 line-through">${originalPrice}</p>
             <div className="flex items-center justify-center gap-2 mt-1">
               <span className="text-3xl font-black text-green-700">${discountedPrice}</span>
               <span className="bg-green-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                {totalDiscount}% OFF
+                {activeBanner.discount_percent}% OFF
               </span>
             </div>
             <p className="text-sm text-green-600 font-medium mt-1">
               You save ${savings}
-            </p>
-          </div>
-
-          {/* Visit Count */}
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="flex -space-x-1">
-              {[...Array(Math.min(visitCount, 5))].map((_, i) => (
-                <span
-                  key={i}
-                  className="w-3 h-3 rounded-full bg-orange-400 border-2 border-white"
-                />
-              ))}
-            </div>
-            <p className="text-xs text-gray-500">
-              You've viewed this course <strong>{visitCount} times</strong>
             </p>
           </div>
 
@@ -240,7 +261,7 @@ export default function DynamicBanner({ slug, courseTitle, price, originalPrice 
             disabled={adding}
             className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white py-3.5 rounded-xl font-bold text-base transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50 shadow-lg"
           >
-            {adding ? "Adding..." : banner.cta_text}
+            {adding ? "Adding..." : activeBanner.cta_text}
           </button>
 
           <p className="text-center text-[11px] text-gray-400 mt-3">
