@@ -21,7 +21,7 @@ export default function TrackingScript() {
     // Debounce: don't log the same page within 30 seconds
     const debounceKey = `track_${pathname}`;
     const lastTrack = sessionStorage.getItem(debounceKey);
-    if (lastTrack && Date.now() - parseInt(lastTrack) < 30000) return;
+    if (lastTrack && Date.now() - parseInt(lastTrack) < 2000) return;
 
     sessionStorage.setItem(debounceKey, Date.now().toString());
 
