@@ -141,6 +141,38 @@ ALTER TABLE leads
   ADD COLUMN IF NOT EXISTS score_updated_at TIMESTAMPTZ DEFAULT now();
 
 -- ============================================
+-- TABLE: course_banners
+-- ============================================
+CREATE TABLE IF NOT EXISTS course_banners (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  course_slug TEXT UNIQUE NOT NULL,
+  is_active BOOLEAN DEFAULT false,
+  offer_text TEXT DEFAULT 'Limited Time Offer!',
+  discount_percent INTEGER DEFAULT 10,
+  cta_text TEXT DEFAULT 'Enroll Now',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE course_banners ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anon select on course_banners"
+  ON course_banners FOR SELECT
+  TO anon
+  USING (true);
+
+CREATE POLICY "Allow anon insert on course_banners"
+  ON course_banners FOR INSERT
+  TO anon
+  WITH CHECK (true);
+
+CREATE POLICY "Allow anon update on course_banners"
+  ON course_banners FOR UPDATE
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+-- ============================================
 -- VIEW: enriched_visits
 -- ============================================
 CREATE OR REPLACE VIEW enriched_visits AS

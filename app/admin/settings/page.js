@@ -4,10 +4,29 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+const COURSES = [
+  { slug: "advanced-python", title: "Advanced Python", price: 799 },
+  { slug: "cloud-devops", title: "Cloud DevOps", price: 899 },
+  { slug: "data-science", title: "Data Science & ML", price: 999 },
+  { slug: "full-stack-web", title: "Full-Stack Web Development", price: 849 },
+  { slug: "cybersecurity-fundamentals", title: "Cybersecurity Fundamentals", price: 949 },
+  { slug: "mobile-app-development", title: "Mobile App Development", price: 879 },
+  { slug: "ai-prompt-engineering", title: "AI & Prompt Engineering", price: 699 },
+  { slug: "blockchain-web3", title: "Blockchain & Web3", price: 1099 },
+  { slug: "ui-ux-design", title: "UI/UX Design", price: 649 },
+  { slug: "database-engineering", title: "Database Engineering", price: 849 },
+  { slug: "system-design", title: "System Design & Architecture", price: 1199 },
+  { slug: "aws-solutions-architect", title: "AWS Solutions Architect", price: 999 },
+  { slug: "data-analytics-power-bi", title: "Data Analytics with Power BI", price: 599 },
+  { slug: "java-spring-boot", title: "Java & Spring Boot", price: 899 },
+];
+
 export default function SettingsPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [copied, setCopied] = useState("");
   const [origin, setOrigin] = useState("https://your-app.com");
+  const [banners, setBanners] = useState({});
+  const [savingBanner, setSavingBanner] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -15,6 +34,17 @@ export default function SettingsPage() {
     if (isAuth === "true") {
       setAuthenticated(true);
       setOrigin(window.location.origin);
+      // Fetch existing banner configs
+      fetch("/api/banners")
+        .then((r) => r.json())
+        .then((data) => {
+          const map = {};
+          for (const b of data.banners || []) {
+            map[b.course_slug] = b;
+          }
+          setBanners(map);
+        })
+        .catch(() => {});
     } else {
       router.push("/admin/login");
     }
@@ -73,6 +103,51 @@ console.log("Visitor ID:", visitorId);`;
       setCopied(label);
       setTimeout(() => setCopied(""), 2000);
     });
+  };
+
+  const getBannerConfig = (slug) => {
+    return banners[slug] || {
+      course_slug: slug,
+      is_active: false,
+      offer_text: "Limited Time Offer!",
+      discount_percent: 10,
+      cta_text: "Enroll Now",
+    };
+  };
+
+  const updateBannerField = (slug, field, value) => {
+    setBanners((prev) => ({
+      ...prev,
+      [slug]: { ...getBannerConfig(slug), [field]: value },
+    }));
+  };
+
+  const saveBanner = async (slug) => {
+    setSavingBanner(slug);
+    try {
+      const config = getBannerConfig(slug);
+      await fetch("/api/banners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+    } catch {}
+    setSavingBanner("");
+  };
+
+  const toggleBanner = async (slug) => {
+    const config = getBannerConfig(slug);
+    const newActive = !config.is_active;
+    updateBannerField(slug, "is_active", newActive);
+    setSavingBanner(slug);
+    try {
+      await fetch("/api/banners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...config, is_active: newActive }),
+      });
+    } catch {}
+    setSavingBanner("");
   };
 
   if (!authenticated) {
@@ -407,6 +482,115 @@ console.log("Visitor ID:", visitorId);`;
               </div>
             </li>
           </ol>
+        </div>
+
+        {/* Ad Banner Management */}
+        <div className="bg-white border-2 border-orange-200 rounded-xl p-6">
+          <h2 className="text-lg font-semibold mb-1">
+            <span className="text-orange-600 mr-2">&#9888;</span>Ad Banner Management
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Activate dynamic offer banners on course pages. Banners appear in the right sidebar when a visitor
+            views the same course <strong>3 or more times</strong> — a strong buying signal.
+          </p>
+
+          <div className="space-y-3">
+            {COURSES.map((course) => {
+              const config = getBannerConfig(course.slug);
+              const isSaving = savingBanner === course.slug;
+              const discounted = Math.round(course.price * (1 - (config.discount_percent || 10) / 100));
+
+              return (
+                <div
+                  key={course.slug}
+                  className={`border rounded-xl p-4 transition-colors ${
+                    config.is_active
+                      ? "border-green-300 bg-green-50"
+                      : "border-gray-200 bg-gray-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      {/* Toggle */}
+                      <button
+                        onClick={() => toggleBanner(course.slug)}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${
+                          config.is_active ? "bg-green-500" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                            config.is_active ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                      <div>
+                        <span className="font-medium text-sm">{course.title}</span>
+                        <span className="text-xs text-gray-400 ml-2">${course.price}</span>
+                        {config.is_active && (
+                          <span className="text-xs text-green-600 ml-2">
+                            → ${discounted} ({config.discount_percent}% off)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        config.is_active
+                          ? "bg-green-600 text-white"
+                          : "bg-gray-300 text-gray-600"
+                      }`}
+                    >
+                      {config.is_active ? "ACTIVE" : "OFF"}
+                    </span>
+                  </div>
+
+                  {config.is_active && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Offer Text</label>
+                        <input
+                          type="text"
+                          value={config.offer_text || ""}
+                          onChange={(e) => updateBannerField(course.slug, "offer_text", e.target.value)}
+                          className="w-full text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Discount %</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="90"
+                          value={config.discount_percent || 10}
+                          onChange={(e) => updateBannerField(course.slug, "discount_percent", parseInt(e.target.value) || 10)}
+                          className="w-full text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">CTA Button Text</label>
+                        <input
+                          type="text"
+                          value={config.cta_text || ""}
+                          onChange={(e) => updateBannerField(course.slug, "cta_text", e.target.value)}
+                          className="w-full text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => saveBanner(course.slug)}
+                          disabled={isSaving}
+                          className="w-full text-sm bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+                        >
+                          {isSaving ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* What Gets Tracked */}
