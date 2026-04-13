@@ -3,13 +3,18 @@ import { NextResponse } from "next/server";
 import { evaluateMilestones } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+function getCorsHeaders(request) {
+  const origin = request.headers.get("origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
 
-function jsonResponse(body, opts = {}) {
+function jsonResponse(body, opts = {}, request) {
+  const corsHeaders = getCorsHeaders(request);
   return NextResponse.json(body, {
     ...opts,
     headers: { ...corsHeaders, ...opts.headers },
@@ -17,8 +22,8 @@ function jsonResponse(body, opts = {}) {
 }
 
 // CORS preflight
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+export async function OPTIONS(request) {
+  return new NextResponse(null, { status: 204, headers: getCorsHeaders(request) });
 }
 
 // Fire-and-forget milestone evaluation — runs after response is sent
@@ -59,7 +64,8 @@ export async function POST(request) {
     if (!cookie_id || !page_url) {
       return jsonResponse(
         { error: "cookie_id and page_url are required" },
-        { status: 400 }
+        { status: 400 },
+        request
       );
     }
 
@@ -87,7 +93,8 @@ export async function POST(request) {
       if (createError) {
         return jsonResponse(
           { error: "Could not create anonymous lead" },
-          { status: 500 }
+          { status: 500 },
+          request
         );
       }
       lead = newLead;
@@ -105,14 +112,14 @@ export async function POST(request) {
       });
 
     if (visitError) {
-      return jsonResponse({ error: visitError.message }, { status: 500 });
+      return jsonResponse({ error: visitError.message }, { status: 500 }, request);
     }
 
     // Evaluate milestones in the background (non-blocking)
     processMilestones(lead.id);
 
-    return jsonResponse({ success: true }, { status: 201 });
+    return jsonResponse({ success: true }, { status: 201 }, request);
   } catch (err) {
-    return jsonResponse({ error: err.message }, { status: 500 });
+    return jsonResponse({ error: err.message }, { status: 500 }, request);
   }
 }

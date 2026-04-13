@@ -1,14 +1,18 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+function getCorsHeaders(request) {
+  const origin = request.headers.get("origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
 
-function json(body, status = 200) {
-  return NextResponse.json(body, { status, headers: corsHeaders });
+function json(body, status = 200, request) {
+  return NextResponse.json(body, { status, headers: getCorsHeaders(request) });
 }
 
 // GET — visitor signals for banner scenario evaluation
@@ -25,12 +29,12 @@ export async function GET(request) {
     const type = searchParams.get("type") || "count";
 
     if (!cookie_id) {
-      return json({ error: "cookie_id is required" }, 400);
+      return json({ error: "cookie_id is required" }, 400, request);
     }
 
     // All signals in one call (used by DynamicBanner)
     if (type === "all_signals") {
-      if (!slug) return json({ error: "slug is required for all_signals" }, 400);
+      if (!slug) return json({ error: "slug is required for all_signals" }, 400, request);
 
       // Parallel queries
       const [countRes, distinctRes, visitsRes, cartRes, checkoutRes] = await Promise.all([
@@ -114,27 +118,27 @@ export async function GET(request) {
         cart_abandoned: cartAbandoned,
         checkout_dropout: checkoutDropout,
         has_payment: hasPayment,
-      });
+      }, 200, request);
     }
 
     // Simple count (default)
     if (type === "count") {
-      if (!slug) return json({ error: "slug is required" }, 400);
+      if (!slug) return json({ error: "slug is required" }, 400, request);
       const { count, error } = await supabaseAdmin
         .from("page_visits")
         .select("*", { count: "exact", head: true })
         .eq("cookie_id", cookie_id)
         .like("page_url", `%/courses/${slug}%`);
-      if (error) return json({ error: error.message }, 500);
-      return json({ count: count || 0 });
+      if (error) return json({ error: error.message }, 500, request);
+      return json({ count: count || 0 }, 200, request);
     }
 
-    return json({ error: "Unknown type" }, 400);
+    return json({ error: "Unknown type" }, 400, request);
   } catch (err) {
-    return json({ error: err.message }, 500);
+    return json({ error: err.message }, 500, request);
   }
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+export async function OPTIONS(request) {
+  return new NextResponse(null, { status: 204, headers: getCorsHeaders(request) });
 }

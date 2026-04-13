@@ -2,13 +2,18 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { MILESTONES, getTemperature } from "@/lib/milestones";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+function getCorsHeaders(request) {
+  const origin = request.headers.get("origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Credentials": "true",
+  };
+}
 
-function jsonResponse(body, opts = {}) {
+function jsonResponse(body, opts = {}, request) {
+  const corsHeaders = getCorsHeaders(request);
   return NextResponse.json(body, {
     ...opts,
     headers: { ...corsHeaders, ...opts.headers },
@@ -16,8 +21,8 @@ function jsonResponse(body, opts = {}) {
 }
 
 // CORS preflight
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+export async function OPTIONS(request) {
+  return new NextResponse(null, { status: 204, headers: getCorsHeaders(request) });
 }
 
 export async function POST(request) {
@@ -28,7 +33,8 @@ export async function POST(request) {
     if (!cookie_id || !name || !email) {
       return jsonResponse(
         { error: "cookie_id, name, and email are required" },
-        { status: 400 }
+        { status: 400 },
+        request
       );
     }
 
@@ -42,7 +48,7 @@ export async function POST(request) {
       .single();
 
     if (error) {
-      return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ error: error.message }, { status: 500 }, request);
     }
 
     // Insert form_submitted milestone (ignore if already exists via unique index)
@@ -74,9 +80,9 @@ export async function POST(request) {
         .eq("id", data.id);
     }
 
-    return jsonResponse({ success: true, lead: data }, { status: 201 });
+    return jsonResponse({ success: true, lead: data }, { status: 201 }, request);
   } catch (err) {
-    return jsonResponse({ error: err.message }, { status: 500 });
+    return jsonResponse({ error: err.message }, { status: 500 }, request);
   }
 }
 
@@ -99,7 +105,7 @@ export async function GET(request) {
 
       const uniqueIds = [...new Set((visitLeadIds || []).map((v) => v.lead_id))];
       if (uniqueIds.length === 0) {
-        return jsonResponse({ leads: [] });
+        return jsonResponse({ leads: [] }, {}, request);
       }
       query = query.in("id", uniqueIds);
     }
@@ -107,11 +113,11 @@ export async function GET(request) {
     const { data, error } = await query;
 
     if (error) {
-      return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ error: error.message }, { status: 500 }, request);
     }
 
-    return jsonResponse({ leads: data });
+    return jsonResponse({ leads: data }, {}, request);
   } catch (err) {
-    return jsonResponse({ error: err.message }, { status: 500 });
+    return jsonResponse({ error: err.message }, { status: 500 }, request);
   }
 }
