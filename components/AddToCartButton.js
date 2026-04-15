@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { getCookieId } from "@/lib/cookies";
 
 export default function AddToCartButton({ slug, courseTitle, price }) {
   const [loading, setLoading] = useState(false);
   const [added, setAdded] = useState(false);
-  const router = useRouter();
 
   const handleAddToCart = async () => {
     const cookieId = getCookieId();
@@ -37,7 +35,7 @@ export default function AddToCartButton({ slug, courseTitle, price }) {
       }
 
       setAdded(true);
-      setTimeout(() => router.push("/cart"), 800);
+      setTimeout(() => { window.location.href = "/cart"; }, 800);
     } catch (err) {
       alert(err.message);
     } finally {
