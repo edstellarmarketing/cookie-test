@@ -13,6 +13,7 @@ export async function GET(request) {
 
   let query = supabaseAdmin.from("admin_settings").select("key, value");
   if (key) query = query.eq("key", key).single();
+  else query = query.order("key");
 
   const { data, error } = await query;
   if (error && error.code !== "PGRST116") {

@@ -216,7 +216,10 @@ export default function BannerManagementPage() {
             Leads
           </Link>
           <Link href="/admin/emails" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
-            Emails
+            Email Log
+          </Link>
+          <Link href="/admin/email-rules" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
+            Email Rules
           </Link>
           <Link href="/admin/settings" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">
             Settings
