@@ -35,6 +35,8 @@ export async function POST(request) {
       .insert({
         name: rule.name.trim(),
         is_enabled: rule.is_enabled ?? true,
+        condition_operator: rule.condition_operator || "AND",
+        conditions: rule.conditions || [],
         user_type: rule.user_type || "any",
         action: rule.action || "visit",
         page_match_type: rule.page_match_type || "any",
