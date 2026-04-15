@@ -81,11 +81,13 @@ export async function POST(request) {
       would_block: !force_send && (emailCount >= MAX_EMAILS_PER_LEAD || (hoursSinceLast !== null && hoursSinceLast < COOLDOWN_HOURS)),
     });
 
+    const bypassCooldown = trigger_event === "cart_abandoned";
+
     if (!force_send) {
       if (emailCount >= MAX_EMAILS_PER_LEAD) {
         return NextResponse.json({ blocked: "max_emails_reached", trace });
       }
-      if (hoursSinceLast !== null && hoursSinceLast < COOLDOWN_HOURS) {
+      if (!bypassCooldown && hoursSinceLast !== null && hoursSinceLast < COOLDOWN_HOURS) {
         return NextResponse.json({ blocked: "cooldown_active", hours_remaining: Math.round((COOLDOWN_HOURS - hoursSinceLast) * 10) / 10, trace });
       }
     }
