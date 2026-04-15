@@ -78,25 +78,16 @@ export default function EmailRulesPage() {
   // Load saved settings
   useEffect(() => {
     if (!authenticated) return;
-    fetch("/api/admin/settings?password=admin123")
+    fetch("/api/admin/email-settings?password=admin123")
       .then((r) => r.json())
-      .then(({ data }) => {
-        if (!data) return;
-        const map = {};
-        (Array.isArray(data) ? data : [data]).forEach((row) => { map[row.key] = row.value; });
-
-        if (map.email_global_enabled !== undefined) {
-          setGlobalEnabled(map.email_global_enabled === "true");
-        }
-        setRules((prev) => {
-          const updated = { ...prev };
-          RULES.forEach(({ key }) => {
-            const settingKey = `email_rule_${key}`;
-            if (map[settingKey] !== undefined) {
-              updated[key] = map[settingKey] === "true";
-            }
-          });
-          return updated;
+      .then(({ settings }) => {
+        if (!settings) return;
+        setGlobalEnabled(settings.global_enabled !== false);
+        setRules({
+          repeat_course_visit: settings.rule_repeat_course_visit !== false,
+          cart_abandoned: settings.rule_cart_abandoned !== false,
+          lead_went_hot: settings.rule_lead_went_hot !== false,
+          re_engaged_after_gap: settings.rule_re_engaged_after_gap !== false,
         });
       })
       .catch(() => {})
@@ -106,22 +97,18 @@ export default function EmailRulesPage() {
   const saveSettings = async () => {
     setSaving(true);
     setSaved(false);
-
-    const entries = [
-      { key: "email_global_enabled", value: String(globalEnabled) },
-      ...RULES.map(({ key }) => ({ key: `email_rule_${key}`, value: String(rules[key]) })),
-    ];
-
-    await Promise.all(
-      entries.map((entry) =>
-        fetch("/api/admin/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: "admin123", ...entry }),
-        })
-      )
-    );
-
+    await fetch("/api/admin/email-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        password: "admin123",
+        global_enabled: globalEnabled,
+        rule_repeat_course_visit: rules.repeat_course_visit,
+        rule_cart_abandoned: rules.cart_abandoned,
+        rule_lead_went_hot: rules.lead_went_hot,
+        rule_re_engaged_after_gap: rules.re_engaged_after_gap,
+      }),
+    });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);

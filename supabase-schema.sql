@@ -180,7 +180,7 @@ CREATE POLICY "Allow anon update on course_banners"
 -- VIEW: enriched_visits
 -- ============================================
 -- ============================================
--- TABLE: admin_settings
+-- TABLE: admin_settings  (generic key-value store)
 -- ============================================
 CREATE TABLE IF NOT EXISTS admin_settings (
   key TEXT PRIMARY KEY,
@@ -192,6 +192,35 @@ ALTER TABLE admin_settings ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow service role all on admin_settings"
   ON admin_settings FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- ============================================
+-- EMAIL TABLES
+-- All email configuration and history lives here
+-- ============================================
+
+-- email_settings: singleton row (id always = 1)
+-- Stores global on/off switch and per-trigger rule toggles
+CREATE TABLE IF NOT EXISTS email_settings (
+  id INTEGER DEFAULT 1 PRIMARY KEY,
+  CONSTRAINT email_settings_single_row CHECK (id = 1),
+  global_enabled BOOLEAN NOT NULL DEFAULT true,
+  rule_repeat_course_visit BOOLEAN NOT NULL DEFAULT true,
+  rule_cart_abandoned BOOLEAN NOT NULL DEFAULT true,
+  rule_lead_went_hot BOOLEAN NOT NULL DEFAULT true,
+  rule_re_engaged_after_gap BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Seed default row
+INSERT INTO email_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE email_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow service role all on email_settings"
+  ON email_settings FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);
