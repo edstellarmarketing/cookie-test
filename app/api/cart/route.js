@@ -15,15 +15,29 @@ export async function POST(request) {
       );
     }
 
-    // Look up lead
-    const { data: lead, error: leadError } = await supabaseAdmin
+    // Look up lead — create anonymous one if visitor hasn't filled the form yet
+    let { data: lead } = await supabaseAdmin
       .from("leads")
       .select("id")
       .eq("cookie_id", cookie_id)
       .single();
 
-    if (leadError || !lead) {
-      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    if (!lead) {
+      const { data: newLead, error: createError } = await supabaseAdmin
+        .from("leads")
+        .insert({
+          cookie_id,
+          name: "Anonymous",
+          email: `${cookie_id}@unknown`,
+          course_interest: course_slug,
+        })
+        .select("id")
+        .single();
+
+      if (createError || !newLead) {
+        return NextResponse.json({ error: "Failed to create lead" }, { status: 500 });
+      }
+      lead = newLead;
     }
 
     // Record add_to_cart event
