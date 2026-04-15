@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { MILESTONES } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
 import { triggerEmailDecision } from "@/lib/email-decision";
@@ -79,7 +80,9 @@ export async function POST(request) {
         }
 
         await recomputeLeadScore(supabaseAdmin, event.lead_id);
-        triggerEmailDecision(event.lead_id, "cart_abandoned", { course_slug: event.course_slug }).catch(console.error);
+        const leadIdForEmail = event.lead_id;
+        const courseSlugForEmail = event.course_slug;
+        after(() => triggerEmailDecision(leadIdForEmail, "cart_abandoned", { course_slug: courseSlugForEmail }));
         processedLeads.add(event.lead_id);
       }
 

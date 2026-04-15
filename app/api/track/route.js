@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { evaluateMilestones } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
 import { triggerEmailDecision } from "@/lib/email-decision";
@@ -50,10 +51,12 @@ async function processMilestones(leadId) {
         console.error("Milestone insert error:", error.message);
       }
 
-      // Fire autonomous email decision for visit-based triggers
+      // Fire autonomous email decision for visit-based triggers (after response via after())
       for (const m of newMilestones) {
         if (m.milestone_type === "repeat_course_visit" || m.milestone_type === "re_engaged_after_gap") {
-          triggerEmailDecision(leadId, m.milestone_type, { milestone: m }).catch(console.error);
+          const milestoneForEmail = m;
+          const leadIdForEmail = leadId;
+          after(() => triggerEmailDecision(leadIdForEmail, milestoneForEmail.milestone_type, { milestone: milestoneForEmail }));
         }
       }
     }

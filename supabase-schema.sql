@@ -192,6 +192,9 @@ CREATE TABLE IF NOT EXISTS email_logs (
   sent_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'sent';
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS error_message TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_email_logs_lead_id ON email_logs(lead_id);
 CREATE INDEX IF NOT EXISTS idx_email_logs_sent_at ON email_logs(sent_at DESC);
 
@@ -202,6 +205,13 @@ CREATE POLICY "Allow service role all on email_logs"
   TO service_role
   USING (true)
   WITH CHECK (true);
+
+CREATE POLICY "Allow anon select on email_logs"
+  ON email_logs FOR SELECT
+  TO anon
+  USING (true);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE email_logs;
 
 -- ============================================
 -- VIEW: enriched_visits
