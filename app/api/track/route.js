@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { evaluateMilestones } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
+import { triggerEmailDecision } from "@/lib/email-decision";
 
 function getCorsHeaders(request) {
   const origin = request.headers.get("origin") || "*";
@@ -47,6 +48,13 @@ async function processMilestones(leadId) {
       const { error } = await supabaseAdmin.from("lead_milestones").insert(rows);
       if (error && error.code !== "23505") {
         console.error("Milestone insert error:", error.message);
+      }
+
+      // Fire autonomous email decision for visit-based triggers
+      for (const m of newMilestones) {
+        if (m.milestone_type === "repeat_course_visit" || m.milestone_type === "re_engaged_after_gap") {
+          triggerEmailDecision(leadId, m.milestone_type, { milestone: m }).catch(console.error);
+        }
       }
     }
 

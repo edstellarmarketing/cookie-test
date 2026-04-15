@@ -179,6 +179,33 @@ CREATE POLICY "Allow anon update on course_banners"
 -- ============================================
 -- VIEW: enriched_visits
 -- ============================================
+-- ============================================
+-- TABLE: email_logs
+-- ============================================
+CREATE TABLE IF NOT EXISTS email_logs (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  lead_id UUID REFERENCES leads(id) ON DELETE CASCADE NOT NULL,
+  trigger_event TEXT NOT NULL,
+  subject TEXT,
+  body TEXT,
+  ai_reasoning TEXT,
+  sent_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_logs_lead_id ON email_logs(lead_id);
+CREATE INDEX IF NOT EXISTS idx_email_logs_sent_at ON email_logs(sent_at DESC);
+
+ALTER TABLE email_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow service role all on email_logs"
+  ON email_logs FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- ============================================
+-- VIEW: enriched_visits
+-- ============================================
 CREATE OR REPLACE VIEW enriched_visits AS
 SELECT
   pv.id AS visit_id,

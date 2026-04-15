@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import { MILESTONES } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
+import { triggerEmailDecision } from "@/lib/email-decision";
 
 // POST — Check for abandoned carts (add_to_cart with no payment_completed after 30 min)
 // Call this periodically or manually from admin
@@ -78,6 +79,7 @@ export async function POST(request) {
         }
 
         await recomputeLeadScore(supabaseAdmin, event.lead_id);
+        triggerEmailDecision(event.lead_id, "cart_abandoned", { course_slug: event.course_slug }).catch(console.error);
         processedLeads.add(event.lead_id);
       }
 
