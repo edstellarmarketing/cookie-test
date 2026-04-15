@@ -81,14 +81,13 @@ function frequencyLabel(rule) {
   }
 }
 
-function ConditionSummary({ condition }) {
-  const userLabel = USER_TYPE_OPTIONS.find((o) => o.value === condition.user_type)?.label || condition.user_type;
+// Action + page portion only (no visitor type — shown once at the start of RuleSummary)
+function ActionPageSummary({ condition }) {
   const actionLabel = ACTION_OPTIONS.find((o) => o.value === condition.action)?.label || condition.action;
   const matchLabel = PAGE_MATCH_OPTIONS.find((o) => o.value === condition.page_match_type)?.label || condition.page_match_type;
 
   return (
     <span>
-      <span className="font-medium text-gray-700">{userLabel}</span>{" "}
       <span className="font-medium text-gray-700">{actionLabel}</span>{" "}
       {condition.page_match_type !== "any" ? (
         <>
@@ -105,10 +104,11 @@ function ConditionSummary({ condition }) {
 function RuleSummary({ rule }) {
   const normalized = normalizeRule(rule);
   const opLabel = normalized.condition_operator === "OR" ? "OR" : "AND";
+  const userLabel = USER_TYPE_OPTIONS.find((o) => o.value === normalized.conditions[0]?.user_type)?.label || "Any user";
 
   return (
     <span className="text-gray-500 text-xs">
-      If{" "}
+      If <span className="font-medium text-gray-700">{userLabel}</span>{" "}
       {normalized.conditions.map((cond, i) => (
         <span key={i}>
           {i > 0 && (
@@ -116,7 +116,7 @@ function RuleSummary({ rule }) {
               {opLabel}
             </span>
           )}
-          <ConditionSummary condition={cond} />
+          <ActionPageSummary condition={cond} />
         </span>
       ))}{" "}
       → send email{" "}
@@ -167,17 +167,21 @@ function ConditionRow({ condition, index, total, operator, onChangeCondition, on
           {index === 0 ? "IF" : ""}
         </span>
 
-        <select
-          value={condition.user_type}
-          onChange={(e) => set("user_type", e.target.value)}
-          className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-        >
-          {USER_TYPE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        {index === 0 && (
+          <>
+            <select
+              value={condition.user_type}
+              onChange={(e) => set("user_type", e.target.value)}
+              className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+            >
+              {USER_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </>
+        )}
 
-        <span className="text-sm text-gray-400">performs</span>
+        <span className="text-sm text-gray-400">{index === 0 ? "performs" : "also"}</span>
 
         <select
           value={condition.action}
