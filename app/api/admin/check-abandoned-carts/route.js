@@ -9,12 +9,13 @@ import { triggerEmailDecision } from "@/lib/email-decision";
 // Call this periodically or manually from admin
 export async function POST(request) {
   try {
-    const { password } = await request.json();
+    const { password, threshold_minutes } = await request.json();
     if (password !== process.env.ADMIN_PASSWORD) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const minutes = Math.min(Math.max(Number(threshold_minutes) || 30, 1), 30);
+    const thirtyMinAgo = new Date(Date.now() - minutes * 60 * 1000).toISOString();
 
     // Find all add_to_cart events older than 30 minutes
     const { data: cartEvents } = await supabaseAdmin

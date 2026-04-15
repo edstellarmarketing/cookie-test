@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const [origin, setOrigin] = useState("https://your-app.com");
   const [cartCheckResult, setCartCheckResult] = useState(null);
   const [cartChecking, setCartChecking] = useState(false);
+  const [cartThreshold, setCartThreshold] = useState(30);
   const router = useRouter();
 
   useEffect(() => {
@@ -443,39 +444,54 @@ console.log("Visitor ID:", visitorId);`;
           <div className="space-y-4">
 
             {/* Check Abandoned Carts */}
-            <div className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div>
-                <div className="font-medium text-sm text-gray-800">Check Abandoned Carts</div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  Finds add-to-cart events older than 30 min with no payment. Marks them abandoned,
-                  updates lead scores, and fires autonomous emails.
-                </div>
-                {cartCheckResult && (
-                  <div className={`mt-2 text-xs font-medium px-2 py-1 rounded inline-block ${cartCheckResult.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                    {cartCheckResult.success
-                      ? `Done — ${cartCheckResult.abandoned ?? 0} cart(s) marked abandoned`
-                      : `Error: ${cartCheckResult.error}`}
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-800">Check Abandoned Carts</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Finds add-to-cart events with no payment, marks them abandoned, updates lead scores, and fires autonomous emails.
                   </div>
-                )}
+                  {cartCheckResult && (
+                    <div className={`mt-2 text-xs font-medium px-2 py-1 rounded inline-block ${cartCheckResult.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                      {cartCheckResult.success
+                        ? `Done — ${cartCheckResult.abandoned ?? 0} cart(s) marked abandoned (threshold: ${cartThreshold} min)`
+                        : `Error: ${cartCheckResult.error}`}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-gray-500 whitespace-nowrap">Older than</label>
+                    <select
+                      value={cartThreshold}
+                      onChange={(e) => { setCartThreshold(Number(e.target.value)); setCartCheckResult(null); }}
+                      className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white"
+                    >
+                      {[1, 2, 3, 5, 10, 15, 20, 25, 30].map((m) => (
+                        <option key={m} value={m}>{m} min</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setCartChecking(true);
+                      setCartCheckResult(null);
+                      const res = await fetch("/api/admin/check-abandoned-carts", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ password: "admin123", threshold_minutes: cartThreshold }),
+                      });
+                      const data = await res.json();
+                      setCartCheckResult(data);
+                      setCartChecking(false);
+                    }}
+                    disabled={cartChecking}
+                    className="text-sm bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                  >
+                    {cartChecking ? "Checking..." : "Run Now"}
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={async () => {
-                  setCartChecking(true);
-                  setCartCheckResult(null);
-                  const res = await fetch("/api/admin/check-abandoned-carts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ password: "admin123" }),
-                  });
-                  const data = await res.json();
-                  setCartCheckResult(data);
-                  setCartChecking(false);
-                }}
-                disabled={cartChecking}
-                className="flex-shrink-0 text-sm bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-              >
-                {cartChecking ? "Checking..." : "Run Now"}
-              </button>
             </div>
 
           </div>
