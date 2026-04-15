@@ -8,6 +8,8 @@ export default function SettingsPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [copied, setCopied] = useState("");
   const [origin, setOrigin] = useState("https://your-app.com");
+  const [cartCheckResult, setCartCheckResult] = useState(null);
+  const [cartChecking, setCartChecking] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -433,6 +435,51 @@ console.log("Visitor ID:", visitorId);`;
             <span className="text-orange-500 text-2xl flex-shrink-0 ml-4">&rarr;</span>
           </div>
         </Link>
+
+        {/* Admin Tools */}
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <h2 className="text-lg font-semibold mb-1">Admin Tools</h2>
+          <p className="text-sm text-gray-500 mb-5">Manually trigger background jobs that normally run on a schedule.</p>
+          <div className="space-y-4">
+
+            {/* Check Abandoned Carts */}
+            <div className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div>
+                <div className="font-medium text-sm text-gray-800">Check Abandoned Carts</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Finds add-to-cart events older than 30 min with no payment. Marks them abandoned,
+                  updates lead scores, and fires autonomous emails.
+                </div>
+                {cartCheckResult && (
+                  <div className={`mt-2 text-xs font-medium px-2 py-1 rounded inline-block ${cartCheckResult.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    {cartCheckResult.success
+                      ? `Done — ${cartCheckResult.abandoned ?? 0} cart(s) marked abandoned`
+                      : `Error: ${cartCheckResult.error}`}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={async () => {
+                  setCartChecking(true);
+                  setCartCheckResult(null);
+                  const res = await fetch("/api/admin/check-abandoned-carts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: "admin123" }),
+                  });
+                  const data = await res.json();
+                  setCartCheckResult(data);
+                  setCartChecking(false);
+                }}
+                disabled={cartChecking}
+                className="flex-shrink-0 text-sm bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+              >
+                {cartChecking ? "Checking..." : "Run Now"}
+              </button>
+            </div>
+
+          </div>
+        </div>
 
         {/* What Gets Tracked */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
