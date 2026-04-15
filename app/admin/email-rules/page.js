@@ -4,145 +4,176 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const USER_TYPE_OPTIONS = [
-  { value: "any", label: "Any user" },
-  { value: "new", label: "New user" },
-  { value: "existing", label: "Existing user" },
+  { value: "new",      label: "New User" },
+  { value: "existing", label: "Existing User" },
 ];
 
 const ACTION_OPTIONS = [
-  { value: "visit", label: "visits" },
-  { value: "add_to_cart", label: "adds to cart" },
-  { value: "checkout_started", label: "starts checkout" },
-  { value: "form_submitted", label: "submits a form" },
+  { value: "visits",         label: "Visits" },
+  { value: "does_not_visit", label: "Does Not Visit" },
 ];
 
-const PAGE_MATCH_OPTIONS = [
-  { value: "any", label: "any page" },
-  { value: "exact", label: "exact URL" },
+const PAGE_MODE_OPTIONS = [
+  { value: "dropdown", label: "Select page" },
+  { value: "url",      label: "Enter URL" },
+];
+
+const URL_MATCH_OPTIONS = [
+  { value: "exact",    label: "Exact URL" },
   { value: "contains", label: "URL contains" },
-  { value: "regex", label: "URL matches regex" },
+];
+
+const FREQUENCY_OPTIONS = [
+  { value: "every_time",       label: "Every time condition matches" },
+  { value: "once_ever",        label: "Once ever per lead" },
+  { value: "once_per_session", label: "Once per session" },
+  { value: "x_per_session",    label: "Up to X times per session" },
+  { value: "x_total",          label: "Up to X times total" },
 ];
 
 const EMPTY_CONDITION = {
-  user_type: "any",
-  action: "visit",
-  page_match_type: "any",
-  page_match_value: "",
+  action:          "visits",
+  page_mode:       "dropdown",
+  page_value:      "",
+  page_match_type: "exact",
 };
-
-const FREQUENCY_OPTIONS = [
-  { value: "every_time",     label: "Every time condition matches" },
-  { value: "once_ever",      label: "Once ever per lead" },
-  { value: "once_per_session", label: "Once per session" },
-  { value: "x_per_session",  label: "Up to X times per session" },
-  { value: "x_total",        label: "Up to X times total" },
-];
 
 const EMPTY_FORM = {
-  name: "",
-  condition_operator: "AND",
-  conditions: [{ ...EMPTY_CONDITION }],
-  trigger_frequency: "once_ever",
-  trigger_limit: 1,
-  is_enabled: true,
+  name:                "",
+  user_type:           "existing",
+  condition_operator:  "AND",
+  conditions:          [{ ...EMPTY_CONDITION }],
+  trigger_frequency:   "once_ever",
+  trigger_limit:       1,
+  is_enabled:          true,
 };
 
-// Convert old flat-column rule into new conditions array format
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalizeCondition(c) {
+  // Already new format
+  if (c.action === "visits" || c.action === "does_not_visit") return c;
+  // Convert old format (action: "visit" / page_match_type etc.)
+  return {
+    action:          "visits",
+    page_mode:       c.page_match_type && c.page_match_type !== "any" ? "url" : "dropdown",
+    page_value:      c.page_match_value || "",
+    page_match_type: c.page_match_type === "contains" ? "contains" : "exact",
+  };
+}
+
 function normalizeRule(rule) {
-  const conditions =
+  const rawConditions =
     Array.isArray(rule.conditions) && rule.conditions.length > 0
       ? rule.conditions
       : [
           {
-            user_type: rule.user_type || "any",
-            action: rule.action || "visit",
+            action:          rule.action || "visit",
             page_match_type: rule.page_match_type || "any",
             page_match_value: rule.page_match_value || "",
           },
         ];
+
   return {
     ...rule,
+    user_type:          rule.user_type || "existing",
     condition_operator: rule.condition_operator || "AND",
-    conditions,
-    trigger_frequency: rule.trigger_frequency || "once_ever",
-    trigger_limit: rule.trigger_limit ?? 1,
+    conditions:         rawConditions.map(normalizeCondition),
+    trigger_frequency:  rule.trigger_frequency || "once_ever",
+    trigger_limit:      rule.trigger_limit ?? 1,
   };
 }
 
 function frequencyLabel(rule) {
   switch (rule.trigger_frequency) {
-    case "every_time":      return "every time";
+    case "every_time":       return "every time";
     case "once_per_session": return "once per session";
-    case "once_ever":       return "once ever";
-    case "x_per_session":   return `up to ${rule.trigger_limit}× per session`;
-    case "x_total":         return `up to ${rule.trigger_limit}× total`;
-    default:                return rule.trigger_frequency;
+    case "once_ever":        return "once ever";
+    case "x_per_session":    return `up to ${rule.trigger_limit}× per session`;
+    case "x_total":          return `up to ${rule.trigger_limit}× total`;
+    default:                 return rule.trigger_frequency;
   }
 }
 
-// Action + page portion only (no visitor type — shown once at the start of RuleSummary)
-function ActionPageSummary({ condition }) {
-  const actionLabel = ACTION_OPTIONS.find((o) => o.value === condition.action)?.label || condition.action;
-  const matchLabel = PAGE_MATCH_OPTIONS.find((o) => o.value === condition.page_match_type)?.label || condition.page_match_type;
-
-  return (
-    <span>
-      <span className="font-medium text-gray-700">{actionLabel}</span>{" "}
-      {condition.page_match_type !== "any" ? (
-        <>
-          on page where <span className="font-medium text-gray-700">{matchLabel}</span>{" "}
-          <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">{condition.page_match_value}</code>
-        </>
-      ) : (
-        <span className="font-medium text-gray-700">any page</span>
-      )}
-    </span>
-  );
+function conditionText(cond, knownPages) {
+  const actionLabel = cond.action === "does_not_visit" ? "does not visit" : "visits";
+  let pageLabel = "any page";
+  if (cond.page_value) {
+    if (cond.page_mode === "dropdown") {
+      const found = knownPages.find((p) => p.url === cond.page_value);
+      pageLabel = found?.title || cond.page_value;
+    } else {
+      pageLabel =
+        cond.page_match_type === "contains"
+          ? `URL contains "${cond.page_value}"`
+          : cond.page_value;
+    }
+  }
+  return { actionLabel, pageLabel };
 }
 
-function RuleSummary({ rule }) {
-  const normalized = normalizeRule(rule);
-  const opLabel = normalized.condition_operator === "OR" ? "OR" : "AND";
-  const userLabel = USER_TYPE_OPTIONS.find((o) => o.value === normalized.conditions[0]?.user_type)?.label || "Any user";
-
-  return (
-    <span className="text-gray-500 text-xs">
-      If <span className="font-medium text-gray-700">{userLabel}</span>{" "}
-      {normalized.conditions.map((cond, i) => (
-        <span key={i}>
-          {i > 0 && (
-            <span className={`mx-1 font-bold text-xs px-1.5 py-0.5 rounded ${opLabel === "OR" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
-              {opLabel}
-            </span>
-          )}
-          <ActionPageSummary condition={cond} />
-        </span>
-      ))}{" "}
-      → send email{" "}
-      <span className="text-purple-600 font-medium">({frequencyLabel(normalized)})</span>
-    </span>
-  );
-}
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Toggle({ enabled, onChange }) {
   return (
     <button
       onClick={() => onChange(!enabled)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${enabled ? "bg-green-500" : "bg-gray-300"}`}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+        enabled ? "bg-green-500" : "bg-gray-300"
+      }`}
     >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+      <span
+        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+          enabled ? "translate-x-4" : "translate-x-0.5"
+        }`}
+      />
     </button>
   );
 }
 
-function ConditionRow({ condition, index, total, operator, onChangeCondition, onChangeOperator, onRemove }) {
-  const set = (key, val) => onChangeCondition(index, { ...condition, [key]: val });
-  const needsPageValue = condition.page_match_type !== "any";
+function RuleSummary({ rule, knownPages = [] }) {
+  const n = normalizeRule(rule);
+  const userLabel = USER_TYPE_OPTIONS.find((o) => o.value === n.user_type)?.label || n.user_type;
+  const opLabel = n.condition_operator;
 
   return (
-    <div className="space-y-2">
-      {/* AND / OR badge between conditions */}
+    <span className="text-gray-500 text-xs">
+      If <span className="font-medium text-gray-700">{userLabel}</span>{" "}
+      {n.conditions.map((cond, i) => {
+        const { actionLabel, pageLabel } = conditionText(cond, knownPages);
+        return (
+          <span key={i}>
+            {i > 0 && (
+              <span
+                className={`mx-1 font-bold text-xs px-1.5 py-0.5 rounded ${
+                  opLabel === "OR"
+                    ? "bg-orange-100 text-orange-700"
+                    : "bg-blue-100 text-blue-700"
+                }`}
+              >
+                {opLabel}
+              </span>
+            )}
+            <span className="font-medium text-gray-700">{actionLabel}</span>{" "}
+            <code className="bg-gray-100 px-1 py-0.5 rounded">{pageLabel}</code>
+          </span>
+        );
+      })}
+      {" → send email "}
+      <span className="text-purple-600 font-medium">({frequencyLabel(n)})</span>
+    </span>
+  );
+}
+
+function ConditionRow({ condition, index, total, operator, knownPages, onChangeCondition, onChangeOperator, onRemove }) {
+  const set = (key, val) => onChangeCondition(index, { ...condition, [key]: val });
+
+  return (
+    <div className="space-y-1.5">
+      {/* AND / OR toggle between rows */}
       {index > 0 && (
         <div className="flex items-center gap-2 my-1">
           <div className="h-px flex-1 bg-gray-200" />
@@ -161,28 +192,13 @@ function ConditionRow({ condition, index, total, operator, onChangeCondition, on
         </div>
       )}
 
-      {/* Condition row */}
       <div className="flex flex-wrap items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide w-5 shrink-0">
+        {/* IF label */}
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide w-4 shrink-0">
           {index === 0 ? "IF" : ""}
         </span>
 
-        {index === 0 && (
-          <>
-            <select
-              value={condition.user_type}
-              onChange={(e) => set("user_type", e.target.value)}
-              className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
-            >
-              {USER_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </>
-        )}
-
-        <span className="text-sm text-gray-400">{index === 0 ? "performs" : "also"}</span>
-
+        {/* Action: Visits / Does Not Visit */}
         <select
           value={condition.action}
           onChange={(e) => set("action", e.target.value)}
@@ -193,41 +209,59 @@ function ConditionRow({ condition, index, total, operator, onChangeCondition, on
           ))}
         </select>
 
-        <span className="text-sm text-gray-400">on</span>
-
+        {/* Page mode: select from dropdown or enter URL */}
         <select
-          value={condition.page_match_type}
+          value={condition.page_mode}
           onChange={(e) => {
-            set("page_match_type", e.target.value);
-            if (e.target.value === "any") onChangeCondition(index, { ...condition, page_match_type: e.target.value, page_match_value: "" });
+            onChangeCondition(index, { ...condition, page_mode: e.target.value, page_value: "" });
           }}
           className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
         >
-          {PAGE_MATCH_OPTIONS.map((o) => (
+          {PAGE_MODE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
 
-        {needsPageValue && (
-          <input
-            type="text"
-            placeholder={
-              condition.page_match_type === "regex"
-                ? "^/courses/.*$"
-                : condition.page_match_type === "exact"
-                ? "/courses/python"
-                : "/courses/"
-            }
-            value={condition.page_match_value}
-            onChange={(e) => set("page_match_value", e.target.value)}
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 w-44"
-          />
+        {/* Page value */}
+        {condition.page_mode === "dropdown" ? (
+          <select
+            value={condition.page_value}
+            onChange={(e) => set("page_value", e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400 max-w-xs"
+          >
+            <option value="">— Any page —</option>
+            {knownPages.map((p) => (
+              <option key={p.url} value={p.url} title={p.url}>
+                {p.title && p.title !== p.url ? `${p.title} (${p.url})` : p.url}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <>
+            <select
+              value={condition.page_match_type}
+              onChange={(e) => set("page_match_type", e.target.value)}
+              className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+            >
+              {URL_MATCH_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder={condition.page_match_type === "exact" ? "/courses/python" : "/courses/"}
+              value={condition.page_value}
+              onChange={(e) => set("page_value", e.target.value)}
+              className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 w-44"
+            />
+          </>
         )}
 
+        {/* Remove button */}
         {total > 1 && (
           <button
             onClick={() => onRemove(index)}
-            className="ml-auto text-gray-300 hover:text-red-400 text-lg leading-none font-bold transition-colors"
+            className="ml-auto text-gray-300 hover:text-red-400 text-xl leading-none font-bold transition-colors"
             title="Remove condition"
           >
             ×
@@ -238,15 +272,10 @@ function ConditionRow({ condition, index, total, operator, onChangeCondition, on
   );
 }
 
-function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
+function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving, knownPages }) {
   const [form, setForm] = useState(() => normalizeRule(initial));
 
-  const setName = (val) => setForm((p) => ({ ...p, name: val }));
-  const setEnabled = (val) => setForm((p) => ({ ...p, is_enabled: val }));
-  const setOperator = (val) => setForm((p) => ({ ...p, condition_operator: val }));
-  const setFrequency = (val) => setForm((p) => ({ ...p, trigger_frequency: val }));
-  const setLimit = (val) => setForm((p) => ({ ...p, trigger_limit: Math.max(1, Number(val) || 1) }));
-  const needsLimit = ["x_per_session", "x_total"].includes(form.trigger_frequency);
+  const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
 
   const updateCondition = (index, updated) =>
     setForm((p) => {
@@ -261,34 +290,71 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
   const removeCondition = (index) =>
     setForm((p) => ({ ...p, conditions: p.conditions.filter((_, i) => i !== index) }));
 
+  const needsLimit = ["x_per_session", "x_total"].includes(form.trigger_frequency);
+
   const isValid =
     form.name.trim() &&
     form.conditions.every(
-      (c) => c.page_match_type === "any" || c.page_match_value.trim()
+      (c) =>
+        c.page_mode === "dropdown" ||
+        (c.page_mode === "url" && c.page_value.trim())
     );
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4">
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-5">
+
       {/* Rule name */}
       <div>
-        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Rule Name</label>
+        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+          Rule Name
+        </label>
         <input
           type="text"
-          placeholder="e.g. Python Course Cart Abandoners"
+          placeholder="e.g. Existing user revisits Python course"
           value={form.name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => set("name", e.target.value)}
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
         />
+      </div>
+
+      {/* User Type — pill toggle */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+          User Type
+        </label>
+        <div className="flex gap-2">
+          {USER_TYPE_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              onClick={() => set("user_type", o.value)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                form.user_type === o.value
+                  ? "bg-gray-900 text-white border-gray-900"
+                  : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Conditions */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Conditions</label>
+          <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+            Conditions
+          </label>
           {form.conditions.length > 1 && (
             <span className="text-xs text-gray-400">
-              Click{" "}
-              <span className={`font-bold px-1.5 py-0.5 rounded ${form.condition_operator === "OR" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
+              Click the{" "}
+              <span
+                className={`font-bold px-1.5 py-0.5 rounded ${
+                  form.condition_operator === "OR"
+                    ? "bg-orange-100 text-orange-700"
+                    : "bg-blue-100 text-blue-700"
+                }`}
+              >
                 {form.condition_operator}
               </span>{" "}
               badge to toggle
@@ -304,8 +370,9 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
               index={i}
               total={form.conditions.length}
               operator={form.condition_operator}
+              knownPages={knownPages}
               onChangeCondition={updateCondition}
-              onChangeOperator={setOperator}
+              onChangeOperator={(val) => set("condition_operator", val)}
               onRemove={removeCondition}
             />
           ))}
@@ -321,12 +388,14 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
 
       {/* Trigger frequency */}
       <div>
-        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Trigger Frequency</label>
+        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+          Trigger Frequency
+        </label>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-400">Send email</span>
           <select
             value={form.trigger_frequency}
-            onChange={(e) => setFrequency(e.target.value)}
+            onChange={(e) => set("trigger_frequency", e.target.value)}
             className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
           >
             {FREQUENCY_OPTIONS.map((o) => (
@@ -341,10 +410,14 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
                 min={1}
                 max={100}
                 value={form.trigger_limit}
-                onChange={(e) => setLimit(e.target.value)}
+                onChange={(e) =>
+                  set("trigger_limit", Math.max(1, Number(e.target.value) || 1))
+                }
                 className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 w-20"
               />
-              <span className="text-sm text-gray-400">time{form.trigger_limit !== 1 ? "s" : ""}</span>
+              <span className="text-sm text-gray-400">
+                time{form.trigger_limit !== 1 ? "s" : ""}
+              </span>
             </>
           )}
         </div>
@@ -352,18 +425,25 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
 
       {/* Preview */}
       <div className="bg-white border border-gray-200 rounded-lg px-4 py-2.5">
-        <span className="text-xs text-gray-400 mr-2 uppercase font-semibold tracking-wide">Preview:</span>
-        <RuleSummary rule={form} />
+        <span className="text-xs text-gray-400 mr-2 uppercase font-semibold tracking-wide">
+          Preview:
+        </span>
+        <RuleSummary rule={form} knownPages={knownPages} />
       </div>
 
-      {/* Actions */}
+      {/* Save / Cancel */}
       <div className="flex items-center justify-between pt-1">
         <label className="flex items-center gap-2 cursor-pointer">
-          <Toggle enabled={form.is_enabled} onChange={setEnabled} />
-          <span className="text-sm text-gray-600">{form.is_enabled ? "Enabled" : "Disabled"}</span>
+          <Toggle enabled={form.is_enabled} onChange={(v) => set("is_enabled", v)} />
+          <span className="text-sm text-gray-600">
+            {form.is_enabled ? "Enabled" : "Disabled"}
+          </span>
         </label>
         <div className="flex gap-2">
-          <button onClick={onCancel} className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+          <button
+            onClick={onCancel}
+            className="text-sm px-4 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+          >
             Cancel
           </button>
           <button
@@ -379,12 +459,15 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function EmailRulesPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [globalEnabled, setGlobalEnabled] = useState(true);
   const [globalSaving, setGlobalSaving] = useState(false);
   const [globalSaved, setGlobalSaved] = useState(false);
   const [rules, setRules] = useState([]);
+  const [knownPages, setKnownPages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
@@ -402,9 +485,11 @@ export default function EmailRulesPage() {
     Promise.all([
       fetch("/api/admin/email-settings?password=admin123").then((r) => r.json()),
       fetch("/api/admin/email-rules?password=admin123").then((r) => r.json()),
-    ]).then(([settingsRes, rulesRes]) => {
+      fetch("/api/admin/known-pages?password=admin123").then((r) => r.json()),
+    ]).then(([settingsRes, rulesRes, pagesRes]) => {
       if (settingsRes.settings) setGlobalEnabled(settingsRes.settings.global_enabled !== false);
       setRules((rulesRes.rules || []).map(normalizeRule));
+      setKnownPages(pagesRes.pages || []);
     }).finally(() => setLoading(false));
   }, [authenticated]);
 
@@ -421,24 +506,30 @@ export default function EmailRulesPage() {
     setTimeout(() => setGlobalSaved(false), 2000);
   };
 
+  const buildPayload = (form) => {
+    const first = form.conditions[0] || EMPTY_CONDITION;
+    return {
+      password:            "admin123",
+      name:                form.name,
+      is_enabled:          form.is_enabled,
+      user_type:           form.user_type,
+      condition_operator:  form.condition_operator,
+      conditions:          form.conditions,
+      trigger_frequency:   form.trigger_frequency,
+      trigger_limit:       form.trigger_limit,
+      // flat backward-compat columns from first condition
+      action:          first.action,
+      page_match_type: first.page_mode === "url" ? first.page_match_type : "any",
+      page_match_value: first.page_mode === "url" ? first.page_value : "",
+    };
+  };
+
   const createRule = async (form) => {
     setFormSaving(true);
-    const first = form.conditions[0] || EMPTY_CONDITION;
     const res = await fetch("/api/admin/email-rules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        password: "admin123",
-        name: form.name,
-        is_enabled: form.is_enabled,
-        condition_operator: form.condition_operator,
-        conditions: form.conditions,
-        // flat columns from first condition for backward compat
-        user_type: first.user_type,
-        action: first.action,
-        page_match_type: first.page_match_type,
-        page_match_value: first.page_match_value,
-      }),
+      body: JSON.stringify(buildPayload(form)),
     });
     const data = await res.json();
     if (data.rule) setRules((prev) => [normalizeRule(data.rule), ...prev]);
@@ -447,15 +538,7 @@ export default function EmailRulesPage() {
   };
 
   const updateRule = async (id, fields) => {
-    // If full form save, include conditions fields
-    const payload = { password: "admin123", ...fields };
-    if (fields.conditions) {
-      const first = fields.conditions[0] || EMPTY_CONDITION;
-      payload.user_type = first.user_type;
-      payload.action = first.action;
-      payload.page_match_type = first.page_match_type;
-      payload.page_match_value = first.page_match_value;
-    }
+    const payload = fields.conditions ? buildPayload(fields) : { password: "admin123", ...fields };
     const res = await fetch(`/api/admin/email-rules/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -482,15 +565,21 @@ export default function EmailRulesPage() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Email Rules</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Define conditions that trigger autonomous emails</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Define conditions that trigger autonomous emails
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/admin" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">Dashboard</Link>
             <Link href="/admin/leads" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">All Leads</Link>
             <Link href="/admin/emails" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">Email Log</Link>
             <Link href="/admin/settings" className="text-sm text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-4 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">Settings</Link>
-            <button onClick={() => { sessionStorage.removeItem("admin_authenticated"); router.push("/admin/login"); }}
-              className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 px-3 py-1.5 rounded-lg">Logout</button>
+            <button
+              onClick={() => { sessionStorage.removeItem("admin_authenticated"); router.push("/admin/login"); }}
+              className="text-sm text-gray-500 hover:text-gray-700 border border-gray-300 px-3 py-1.5 rounded-lg"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>
@@ -511,7 +600,9 @@ export default function EmailRulesPage() {
                   {globalSaved && <span className="text-xs text-green-600 font-medium">Saved ✓</span>}
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {globalEnabled ? `${rules.filter((r) => r.is_enabled).length} active rule(s) running` : "All autonomous emails paused"}
+                  {globalEnabled
+                    ? `${rules.filter((r) => r.is_enabled).length} active rule(s) running`
+                    : "All autonomous emails paused"}
                 </p>
               </div>
               <Toggle enabled={globalEnabled} onChange={(v) => { if (!globalSaving) saveGlobal(v); }} />
@@ -521,7 +612,8 @@ export default function EmailRulesPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-800">
-                  Rules <span className="text-gray-400 font-normal text-sm">({rules.length})</span>
+                  Rules{" "}
+                  <span className="text-gray-400 font-normal text-sm">({rules.length})</span>
                 </h3>
                 {!showForm && !editingRule && (
                   <button
@@ -533,21 +625,22 @@ export default function EmailRulesPage() {
                 )}
               </div>
 
-              {/* Create form */}
               {showForm && (
                 <RuleForm
+                  knownPages={knownPages}
                   onSave={createRule}
                   onCancel={() => setShowForm(false)}
                   saving={formSaving}
                 />
               )}
 
-              {/* Rules */}
               {rules.length === 0 && !showForm ? (
                 <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
                   <div className="text-3xl mb-3">📋</div>
                   <div className="text-gray-500 text-sm font-medium">No rules yet</div>
-                  <div className="text-gray-400 text-xs mt-1">Click "Add Rule" to define your first email trigger condition</div>
+                  <div className="text-gray-400 text-xs mt-1">
+                    Click "Add Rule" to define your first email trigger condition
+                  </div>
                 </div>
               ) : (
                 rules.map((rule) => (
@@ -555,6 +648,7 @@ export default function EmailRulesPage() {
                     {editingRule === rule.id ? (
                       <RuleForm
                         initial={rule}
+                        knownPages={knownPages}
                         onSave={(form) => { setFormSaving(true); updateRule(rule.id, form); }}
                         onCancel={() => setEditingRule(null)}
                         saving={formSaving}
@@ -564,7 +658,7 @@ export default function EmailRulesPage() {
                         <div className="flex items-start gap-3 min-w-0">
                           <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${rule.is_enabled && globalEnabled ? "bg-green-500" : "bg-gray-300"}`} />
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-semibold text-sm text-gray-900">{rule.name}</span>
                               {rule.conditions.length > 1 && (
                                 <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${rule.condition_operator === "OR" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
@@ -573,7 +667,7 @@ export default function EmailRulesPage() {
                               )}
                             </div>
                             <div className="mt-0.5">
-                              <RuleSummary rule={rule} />
+                              <RuleSummary rule={rule} knownPages={knownPages} />
                             </div>
                           </div>
                         </div>
@@ -582,12 +676,16 @@ export default function EmailRulesPage() {
                             enabled={rule.is_enabled}
                             onChange={(v) => updateRule(rule.id, { is_enabled: v })}
                           />
-                          <button onClick={() => setEditingRule(rule.id)}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50">
+                          <button
+                            onClick={() => setEditingRule(rule.id)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                          >
                             Edit
                           </button>
-                          <button onClick={() => deleteRule(rule.id)}
-                            className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-3 py-1.5 rounded-lg hover:bg-red-50">
+                          <button
+                            onClick={() => deleteRule(rule.id)}
+                            className="text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 px-3 py-1.5 rounded-lg hover:bg-red-50"
+                          >
                             Delete
                           </button>
                         </div>
@@ -599,7 +697,7 @@ export default function EmailRulesPage() {
             </div>
 
             <p className="text-xs text-gray-400 text-center">
-              Rules are evaluated when visitors trigger matching actions · AND = all conditions must match · OR = any condition triggers
+              AND = all conditions must match · OR = any condition triggers · Global OFF pauses all rules
             </p>
           </>
         )}
