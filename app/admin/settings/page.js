@@ -11,6 +11,8 @@ export default function SettingsPage() {
   const [cartCheckResult, setCartCheckResult] = useState(null);
   const [cartChecking, setCartChecking] = useState(false);
   const [cartThreshold, setCartThreshold] = useState(30);
+  const [thresholdSaved, setThresholdSaved] = useState(false);
+  const [thresholdSaving, setThresholdSaving] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -18,10 +20,28 @@ export default function SettingsPage() {
     if (isAuth === "true") {
       setAuthenticated(true);
       setOrigin(window.location.origin);
+      // Load saved cart threshold
+      fetch("/api/admin/settings?password=admin123&key=cart_abandon_threshold_minutes")
+        .then((r) => r.json())
+        .then(({ data }) => { if (data?.value) setCartThreshold(Number(data.value)); })
+        .catch(() => {});
     } else {
       router.push("/admin/login");
     }
   }, [router]);
+
+  const saveCartThreshold = async (value) => {
+    setThresholdSaving(true);
+    setThresholdSaved(false);
+    await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "admin123", key: "cart_abandon_threshold_minutes", value: String(value) }),
+    });
+    setThresholdSaving(false);
+    setThresholdSaved(true);
+    setTimeout(() => setThresholdSaved(false), 2000);
+  };
 
   const embedCode = `<script src="${origin}/tracker.js" data-host="${origin}"></script>`;
 
@@ -464,13 +484,24 @@ console.log("Visitor ID:", visitorId);`;
                     <label className="text-xs text-gray-500 whitespace-nowrap">Older than</label>
                     <select
                       value={cartThreshold}
-                      onChange={(e) => { setCartThreshold(Number(e.target.value)); setCartCheckResult(null); }}
+                      onChange={(e) => { setCartThreshold(Number(e.target.value)); setCartCheckResult(null); setThresholdSaved(false); }}
                       className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white"
                     >
                       {[1, 2, 3, 5, 10, 15, 20, 25, 30].map((m) => (
                         <option key={m} value={m}>{m} min</option>
                       ))}
                     </select>
+                    <button
+                      onClick={() => saveCartThreshold(cartThreshold)}
+                      disabled={thresholdSaving || thresholdSaved}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                        thresholdSaved
+                          ? "bg-green-100 text-green-700 border border-green-200"
+                          : "bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {thresholdSaved ? "Saved ✓" : thresholdSaving ? "Saving..." : "Save"}
+                    </button>
                   </div>
                   <button
                     onClick={async () => {

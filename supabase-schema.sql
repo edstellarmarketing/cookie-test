@@ -180,6 +180,23 @@ CREATE POLICY "Allow anon update on course_banners"
 -- VIEW: enriched_visits
 -- ============================================
 -- ============================================
+-- TABLE: admin_settings
+-- ============================================
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE admin_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow service role all on admin_settings"
+  ON admin_settings FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- ============================================
 -- TABLE: email_logs
 -- ============================================
 CREATE TABLE IF NOT EXISTS email_logs (
