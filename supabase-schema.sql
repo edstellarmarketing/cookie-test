@@ -277,3 +277,34 @@ SELECT
 FROM page_visits pv
 JOIN leads l ON l.id = pv.lead_id
 ORDER BY pv.visited_at DESC;
+
+-- ============================================
+-- TABLE: email_rules
+-- ============================================
+CREATE TABLE IF NOT EXISTS email_rules (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name TEXT NOT NULL,
+  is_enabled BOOLEAN DEFAULT true,
+  -- multi-condition support
+  conditions JSONB DEFAULT '[]',
+  condition_operator TEXT DEFAULT 'AND',   -- 'AND' | 'OR'
+  -- trigger frequency
+  trigger_frequency TEXT DEFAULT 'once_ever',
+  -- 'every_time' | 'once_ever' | 'once_per_session' | 'x_per_session' | 'x_total'
+  trigger_limit INTEGER DEFAULT 1,         -- used when frequency is x_per_session or x_total
+  -- flat columns (first condition, kept for backward compat)
+  user_type TEXT NOT NULL DEFAULT 'any',   -- 'any' | 'new' | 'existing'
+  action TEXT NOT NULL DEFAULT 'visit',    -- 'visit' | 'add_to_cart' | 'checkout_started' | 'form_submitted'
+  page_match_type TEXT NOT NULL DEFAULT 'any', -- 'any' | 'exact' | 'contains' | 'regex'
+  page_match_value TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE email_rules ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow service role all on email_rules"
+  ON email_rules FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
