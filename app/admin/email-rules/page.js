@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -461,6 +467,63 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving, knownPages }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const STATUS_CONFIG = {
+  rule_matched: { label: "Matched — generating email", color: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400", pulse: true },
+  sent:         { label: "Email Sent", color: "bg-green-100 text-green-700", dot: "bg-green-500", pulse: false },
+  failed:       { label: "Failed", color: "bg-red-100 text-red-700", dot: "bg-red-500", pulse: false },
+  skipped:      { label: "Skipped by AI", color: "bg-gray-100 text-gray-500", dot: "bg-gray-400", pulse: false },
+  blocked_cap:  { label: "Cap Reached", color: "bg-orange-100 text-orange-600", dot: "bg-orange-400", pulse: false },
+  blocked_cooldown: { label: "Cooldown", color: "bg-blue-100 text-blue-600", dot: "bg-blue-400", pulse: false },
+};
+
+function ActivityLog({ logs, newCount }) {
+  if (logs.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 text-center text-gray-400 text-sm">
+        No activity yet — rule matches will appear here in real time
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {newCount > 0 && (
+        <div className="flex items-center gap-2 text-xs text-green-600 font-semibold animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+          {newCount} new event{newCount > 1 ? "s" : ""} just arrived
+        </div>
+      )}
+      {logs.map((log) => {
+        const cfg = STATUS_CONFIG[log.status] || { label: log.status, color: "bg-gray-100 text-gray-500", dot: "bg-gray-400", pulse: false };
+        const leadName = log.leads?.name || "Unknown";
+        const leadEmail = log.leads?.email || "";
+        const time = new Date(log.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const date = new Date(log.sent_at).toLocaleDateString([], { month: "short", day: "numeric" });
+        return (
+          <div key={log.id} className="bg-white border border-gray-100 rounded-lg px-4 py-3 flex items-start gap-3">
+            <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot} ${cfg.pulse ? "animate-pulse" : ""}`} />
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-sm text-gray-900">{log.rule_name || log.trigger_event}</span>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5 truncate">
+                {leadName !== "Anonymous" ? `${leadName} · ` : ""}{leadEmail}
+              </div>
+              {log.ai_reasoning && log.status !== "rule_matched" && (
+                <div className="text-xs text-gray-400 mt-0.5 truncate italic">{log.ai_reasoning}</div>
+              )}
+            </div>
+            <div className="text-xs text-gray-400 text-right flex-shrink-0">
+              <div>{time}</div>
+              <div>{date}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function EmailRulesPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [globalEnabled, setGlobalEnabled] = useState(true);
@@ -472,6 +535,9 @@ export default function EmailRulesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [formSaving, setFormSaving] = useState(false);
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [newCount, setNewCount] = useState(0);
+  const newCountTimer = useRef(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -486,11 +552,28 @@ export default function EmailRulesPage() {
       fetch("/api/admin/email-settings?password=admin123").then((r) => r.json()),
       fetch("/api/admin/email-rules?password=admin123").then((r) => r.json()),
       fetch("/api/admin/known-pages?password=admin123").then((r) => r.json()),
-    ]).then(([settingsRes, rulesRes, pagesRes]) => {
+      fetch("/api/admin/rule-logs?password=admin123").then((r) => r.json()),
+    ]).then(([settingsRes, rulesRes, pagesRes, logsRes]) => {
       if (settingsRes.settings) setGlobalEnabled(settingsRes.settings.global_enabled !== false);
       setRules((rulesRes.rules || []).map(normalizeRule));
       setKnownPages(pagesRes.pages || []);
+      setActivityLogs(logsRes.logs || []);
     }).finally(() => setLoading(false));
+
+    // Realtime: subscribe to email_logs inserts and filter rule-related ones
+    const channel = supabase
+      .channel("rule-activity")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "email_logs" }, (payload) => {
+        const log = payload.new;
+        if (!log.rule_id) return; // ignore non-rule logs
+        setActivityLogs((prev) => [log, ...prev].slice(0, 100));
+        setNewCount((n) => n + 1);
+        clearTimeout(newCountTimer.current);
+        newCountTimer.current = setTimeout(() => setNewCount(0), 5000);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, [authenticated]);
 
   const saveGlobal = async (value) => {
@@ -699,6 +782,23 @@ export default function EmailRulesPage() {
             <p className="text-xs text-gray-400 text-center">
               AND = all conditions must match · OR = any condition triggers · Global OFF pauses all rules
             </p>
+
+            {/* ── Recent Activity ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800">
+                  Recent Activity
+                  <span className="ml-2 text-gray-400 font-normal text-sm">
+                    ({activityLogs.length})
+                  </span>
+                </h3>
+                <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                  Live
+                </div>
+              </div>
+              <ActivityLog logs={activityLogs} newCount={newCount} />
+            </div>
           </>
         )}
       </div>

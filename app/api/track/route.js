@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { evaluateMilestones } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
 import { triggerEmailDecision } from "@/lib/email-decision";
+import { evaluateRulesForLead } from "@/lib/rule-engine";
 
 function getCorsHeaders(request) {
   const origin = request.headers.get("origin") || "*";
@@ -128,6 +129,9 @@ export async function POST(request) {
 
     // Evaluate milestones in the background (non-blocking)
     processMilestones(lead.id);
+
+    // Evaluate email rules after response is sent
+    after(() => evaluateRulesForLead(lead.id));
 
     return jsonResponse({ success: true }, { status: 201 }, request);
   } catch (err) {

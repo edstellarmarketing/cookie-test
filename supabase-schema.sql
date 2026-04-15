@@ -240,6 +240,8 @@ CREATE TABLE IF NOT EXISTS email_logs (
 
 ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'sent';
 ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS rule_id BIGINT;
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS rule_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_email_logs_lead_id ON email_logs(lead_id);
 CREATE INDEX IF NOT EXISTS idx_email_logs_sent_at ON email_logs(sent_at DESC);

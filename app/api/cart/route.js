@@ -1,7 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { MILESTONES } from "@/lib/milestones";
 import { recomputeLeadScore } from "@/lib/recompute-scores";
+import { evaluateRulesForLead } from "@/lib/rule-engine";
 
 // POST — Add to cart (records event + triggers cart_page_reached milestone)
 export async function POST(request) {
@@ -63,6 +65,9 @@ export async function POST(request) {
     }
 
     await recomputeLeadScore(supabaseAdmin, lead.id);
+
+    // Evaluate email rules after response is sent
+    after(() => evaluateRulesForLead(lead.id));
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err) {
