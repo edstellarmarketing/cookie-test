@@ -12,7 +12,7 @@ export async function GET(request) {
 
   const { data, error } = await supabaseAdmin
     .from("email_logs")
-    .select("id, trigger_event, subject, body, ai_reasoning, sent_at, lead_id, leads(name, email)")
+    .select("id, trigger_event, subject, body, ai_reasoning, error_message, status, sent_at, lead_id, leads(name, email)")
     .order("sent_at", { ascending: false })
     .limit(200);
 
