@@ -31,10 +31,20 @@ const EMPTY_CONDITION = {
   page_match_value: "",
 };
 
+const FREQUENCY_OPTIONS = [
+  { value: "every_time",     label: "Every time condition matches" },
+  { value: "once_ever",      label: "Once ever per lead" },
+  { value: "once_per_session", label: "Once per session" },
+  { value: "x_per_session",  label: "Up to X times per session" },
+  { value: "x_total",        label: "Up to X times total" },
+];
+
 const EMPTY_FORM = {
   name: "",
   condition_operator: "AND",
   conditions: [{ ...EMPTY_CONDITION }],
+  trigger_frequency: "once_ever",
+  trigger_limit: 1,
   is_enabled: true,
 };
 
@@ -55,7 +65,20 @@ function normalizeRule(rule) {
     ...rule,
     condition_operator: rule.condition_operator || "AND",
     conditions,
+    trigger_frequency: rule.trigger_frequency || "once_ever",
+    trigger_limit: rule.trigger_limit ?? 1,
   };
+}
+
+function frequencyLabel(rule) {
+  switch (rule.trigger_frequency) {
+    case "every_time":      return "every time";
+    case "once_per_session": return "once per session";
+    case "once_ever":       return "once ever";
+    case "x_per_session":   return `up to ${rule.trigger_limit}× per session`;
+    case "x_total":         return `up to ${rule.trigger_limit}× total`;
+    default:                return rule.trigger_frequency;
+  }
 }
 
 function ConditionSummary({ condition }) {
@@ -96,7 +119,8 @@ function RuleSummary({ rule }) {
           <ConditionSummary condition={cond} />
         </span>
       ))}{" "}
-      → send email
+      → send email{" "}
+      <span className="text-purple-600 font-medium">({frequencyLabel(normalized)})</span>
     </span>
   );
 }
@@ -216,6 +240,9 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
   const setName = (val) => setForm((p) => ({ ...p, name: val }));
   const setEnabled = (val) => setForm((p) => ({ ...p, is_enabled: val }));
   const setOperator = (val) => setForm((p) => ({ ...p, condition_operator: val }));
+  const setFrequency = (val) => setForm((p) => ({ ...p, trigger_frequency: val }));
+  const setLimit = (val) => setForm((p) => ({ ...p, trigger_limit: Math.max(1, Number(val) || 1) }));
+  const needsLimit = ["x_per_session", "x_total"].includes(form.trigger_frequency);
 
   const updateCondition = (index, updated) =>
     setForm((p) => {
@@ -286,6 +313,37 @@ function RuleForm({ initial = EMPTY_FORM, onSave, onCancel, saving }) {
         >
           <span className="text-base leading-none">+</span> Add Condition
         </button>
+      </div>
+
+      {/* Trigger frequency */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">Trigger Frequency</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-gray-400">Send email</span>
+          <select
+            value={form.trigger_frequency}
+            onChange={(e) => setFrequency(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-blue-400"
+          >
+            {FREQUENCY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {needsLimit && (
+            <>
+              <span className="text-sm text-gray-400">limit:</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={form.trigger_limit}
+                onChange={(e) => setLimit(e.target.value)}
+                className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-400 w-20"
+              />
+              <span className="text-sm text-gray-400">time{form.trigger_limit !== 1 ? "s" : ""}</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Preview */}
